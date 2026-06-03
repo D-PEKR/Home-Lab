@@ -1,6 +1,6 @@
 ---
 # roles/common/tasks/main.yml
-# Basis-OS-Hardening, UFW-Firewall, Pakete für alle Nodes.
+# Basis-OS-Hardening, UFW-Firewall, Pakete fuer alle Nodes.
 
 - name: Set hostname
   ansible.builtin.hostname:
@@ -40,7 +40,19 @@
       - open-iscsi
       - nfs-common
       - jq
+      - python3-pip
+      - python3-setuptools
     state: present
+
+# Python-Bibliotheken fuer kubernetes.core.k8s und kubernetes.core.helm
+- name: Install Python kubernetes library
+  ansible.builtin.pip:
+    name:
+      - kubernetes
+      - PyYAML
+      - jsonpatch
+    state: present
+    extra_args: --break-system-packages
 
 - name: Enable and start chrony (NTP)
   ansible.builtin.systemd:
@@ -49,19 +61,19 @@
     enabled: true
 
 # ── UFW Firewall ──────────────────────────────────────────────
-- name: Configure UFW – default deny
+- name: Configure UFW - default deny
   community.general.ufw:
     state: enabled
     default: deny
     direction: incoming
 
-- name: UFW – SSH
+- name: UFW - SSH
   community.general.ufw:
     rule: allow
     port: "22"
     proto: tcp
 
-- name: UFW – HTTP + HTTPS (nur auf Server-Node)
+- name: UFW - HTTP + HTTPS (nur auf Server-Node)
   community.general.ufw:
     rule: allow
     port: "{{ item }}"
@@ -71,37 +83,37 @@
     - "443"
   when: inventory_hostname in groups['k3s_server']
 
-- name: UFW – k3s API
+- name: UFW - k3s API
   community.general.ufw:
     rule: allow
     port: "6443"
     proto: tcp
 
-- name: UFW – k3s Kubelet
+- name: UFW - k3s Kubelet
   community.general.ufw:
     rule: allow
     port: "10250"
     proto: tcp
     src: "{{ local_subnet }}"
 
-- name: UFW – Flannel VXLAN (Cluster-intern)
+- name: UFW - Flannel VXLAN (Cluster-intern)
   community.general.ufw:
     rule: allow
     port: "8472"
     proto: udp
     src: "{{ local_subnet }}"
 
-- name: UFW – LAN full trust
+- name: UFW - LAN full trust
   community.general.ufw:
     rule: allow
     src: "{{ local_subnet }}"
 
-- name: UFW – Pod CIDR full trust
+- name: UFW - Pod CIDR full trust
   community.general.ufw:
     rule: allow
     src: "{{ k3s_cluster_cidr }}"
 
-- name: UFW – Service CIDR full trust
+- name: UFW - Service CIDR full trust
   community.general.ufw:
     rule: allow
     src: "{{ k3s_service_cidr }}"
@@ -129,7 +141,7 @@
     - {key: net.bridge.bridge-nf-call-ip6tables, value: "1"}
     - {key: net.ipv4.ip_forward, value: "1"}
 
-# ── Reboot falls nötig ───────────────────────────────────────
+# ── Reboot falls noetig ──────────────────────────────────────
 - name: Handle reboot if required
   when: auto_reboot_if_required
   block:

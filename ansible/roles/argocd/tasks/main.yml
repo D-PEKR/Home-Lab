@@ -1,6 +1,14 @@
 ---
 # roles/argocd/tasks/main.yml
-# Installiert ArgoCD via Helm und bootstrapped den Root-ApplicationSet.
+
+- name: Install Python kubernetes library
+  ansible.builtin.pip:
+    name:
+      - kubernetes
+      - PyYAML
+      - jsonpatch
+    state: present
+    extra_args: --break-system-packages
 
 - name: Check if Helm is installed
   ansible.builtin.stat:
@@ -74,11 +82,13 @@
   changed_when: false
   when: not ansible_check_mode
 
+# src: liest die Datei auf dem Remote-Node – die Datei liegt aber nur lokal.
+# Loesung: Datei mit lookup() lokal einlesen und als definition uebergeben.
 - name: Apply Root ApplicationSet
   kubernetes.core.k8s:
     kubeconfig: /etc/rancher/k3s/k3s.yaml
     state: present
-    src: "{{ playbook_dir }}/../argocd/bootstrap/root-applicationset.yaml"
+    definition: "{{ lookup('file', playbook_dir + '/../argocd/bootstrap/root-applicationset.yaml') | from_yaml }}"
   when: not ansible_check_mode
 
 - name: Get ArgoCD initial admin password

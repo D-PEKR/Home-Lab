@@ -1,6 +1,14 @@
 ---
 # roles/metallb/tasks/main.yml
-# Deployed MetalLB via Helm und konfiguriert den IP-Pool.
+
+- name: Install Python kubernetes library (Voraussetzung fuer k8s-Modul)
+  ansible.builtin.pip:
+    name:
+      - kubernetes
+      - PyYAML
+      - jsonpatch
+    state: present
+    extra_args: --break-system-packages
 
 - name: Check if Helm is installed
   ansible.builtin.stat:
