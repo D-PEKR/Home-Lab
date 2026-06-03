@@ -1,0 +1,72 @@
+---
+# roles/storage/tasks/main.yml
+# Mountet die HDD auf Node 95 und legt GitLab-Verzeichnisse an.
+
+- name: Install filesystem tools
+  ansible.builtin.apt:
+    name:
+      - e2fsprogs
+      - xfsprogs
+      - lvm2
+    state: present
+    update_cache: true
+
+- name: Create mount point
+  ansible.builtin.file:
+    path: "{{ hdd_mount_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Check existing filesystem on HDD
+  ansible.builtin.command: blkid -o value -s TYPE {{ hdd_device }}
+  register: existing_fs
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Show detected filesystem type
+  ansible.builtin.debug:
+    msg: "Device {{ hdd_device }}: {{ existing_fs.stdout | default('kein Filesystem erkannt') }}"
+
+# Nur formatieren wenn blkid leer zurückgibt (kein bestehendes FS)
+- name: Format HDD with mkfs (nur wenn kein Filesystem vorhanden)
+  ansible.builtin.shell: mkfs.{{ hdd_filesystem }} {{ hdd_device }}
+  when:
+    - not ansible_check_mode
+    - existing_fs.rc == 0
+    - existing_fs.stdout | trim == ""
+  changed_when: true
+
+- name: Mount HDD persistently
+  ansible.posix.mount:
+    path: "{{ hdd_mount_path }}"
+    src: "{{ hdd_device }}"
+    fstype: "{{ hdd_filesystem }}"
+    opts: defaults,noatime
+    state: mounted
+  when: not ansible_check_mode
+
+- name: Create GitLab data directories on HDD
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  loop:
+    - "{{ hdd_mount_path }}/gitlab"
+    - "{{ hdd_mount_path }}/gitlab/data"
+    - "{{ hdd_mount_path }}/gitlab/logs"
+    - "{{ hdd_mount_path }}/gitlab/config"
+    - "{{ hdd_mount_path }}/gitlab/postgresql"
+    - "{{ hdd_mount_path }}/gitlab/redis"
+
+- name: Show HDD disk usage
+  ansible.builtin.command: df -h {{ hdd_mount_path }}
+  register: disk_usage
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Print HDD info
+  ansible.builtin.debug:
+    msg: "HDD mounted at {{ hdd_mount_path }}: {{ disk_usage.stdout | default('(check-mode)') }}"

@@ -1,0 +1,68 @@
+---
+# ansible/site.yml – Entry-Point
+
+- name: Common OS hardening & packages
+  hosts: k3s_cluster
+  become: true
+  roles:
+    - common
+
+- name: Mount HDD on storage node
+  hosts: k3s_agent
+  become: true
+  roles:
+    - storage
+
+- name: Install k3s server node
+  hosts: k3s_server
+  become: true
+  roles:
+    - k3s_server
+
+- name: Join k3s agent nodes
+  hosts: k3s_agent
+  become: true
+  roles:
+    - k3s_agent
+
+- name: Deploy MetalLB
+  hosts: k3s_server
+  become: true
+  roles:
+    - metallb
+
+- name: Deploy cert-manager + ClusterIssuer
+  hosts: k3s_server
+  become: true
+  roles:
+    - cert_manager
+
+- name: Deploy ArgoCD + bootstrap ApplicationSet
+  hosts: k3s_server
+  become: true
+  roles:
+    - argocd
+
+- name: Print cluster info
+  hosts: k3s_server
+  tasks:
+    - name: Get ArgoCD initial admin password
+      ansible.builtin.shell: |
+        kubectl -n argocd get secret argocd-initial-admin-secret \
+          -o jsonpath='{.data.password}' | base64 -d
+      register: argocd_password
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Print access info
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════╗
+          ║           Home-Lab pke-lab.de ist bereit!           ║
+          ╠══════════════════════════════════════════════════════╣
+          ║  ArgoCD UI:  https://argocd.{{ base_domain }}       ║
+          ║  Username:   admin                                   ║
+          ║  Password:   {{ argocd_password.stdout | default('(check-mode)') }}
+          ╠══════════════════════════════════════════════════════╣
+          ║  MetalLB VIP:  {{ ingress_vip }}                    ║
+          ╚══════════════════════════════════════════════════════╝

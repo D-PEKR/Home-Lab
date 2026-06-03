@@ -1,0 +1,145 @@
+---
+# roles/common/tasks/main.yml
+# Basis-OS-Hardening, UFW-Firewall, Pakete für alle Nodes.
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ timezone }}"
+
+- name: Disable swap permanently
+  ansible.builtin.command: swapoff -a
+  changed_when: false
+
+- name: Remove swap from fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^\S+\s+\S+\s+swap\s+'
+    state: absent
+
+- name: Update and upgrade packages
+  ansible.builtin.apt:
+    upgrade: dist
+    update_cache: true
+    cache_valid_time: 3600
+  when: auto_upgrade
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - git
+      - htop
+      - vim
+      - ufw
+      - chrony
+      - open-iscsi
+      - nfs-common
+      - jq
+    state: present
+
+- name: Enable and start chrony (NTP)
+  ansible.builtin.systemd:
+    name: chrony
+    state: started
+    enabled: true
+
+# ── UFW Firewall ──────────────────────────────────────────────
+- name: Configure UFW – default deny
+  community.general.ufw:
+    state: enabled
+    default: deny
+    direction: incoming
+
+- name: UFW – SSH
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+
+- name: UFW – HTTP + HTTPS (nur auf Server-Node)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "80"
+    - "443"
+  when: inventory_hostname in groups['k3s_server']
+
+- name: UFW – k3s API
+  community.general.ufw:
+    rule: allow
+    port: "6443"
+    proto: tcp
+
+- name: UFW – k3s Kubelet
+  community.general.ufw:
+    rule: allow
+    port: "10250"
+    proto: tcp
+    src: "{{ local_subnet }}"
+
+- name: UFW – Flannel VXLAN (Cluster-intern)
+  community.general.ufw:
+    rule: allow
+    port: "8472"
+    proto: udp
+    src: "{{ local_subnet }}"
+
+- name: UFW – LAN full trust
+  community.general.ufw:
+    rule: allow
+    src: "{{ local_subnet }}"
+
+- name: UFW – Pod CIDR full trust
+  community.general.ufw:
+    rule: allow
+    src: "{{ k3s_cluster_cidr }}"
+
+- name: UFW – Service CIDR full trust
+  community.general.ufw:
+    rule: allow
+    src: "{{ k3s_service_cidr }}"
+
+# ── Kernel: br_netfilter VOR sysctl laden ─────────────────────
+- name: Persist br_netfilter (load on boot)
+  ansible.builtin.copy:
+    content: "br_netfilter\n"
+    dest: /etc/modules-load.d/br_netfilter.conf
+    mode: "0644"
+
+- name: Load br_netfilter module now
+  community.general.modprobe:
+    name: br_netfilter
+    state: present
+
+- name: Set sysctl for k3s
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+  loop:
+    - {key: net.bridge.bridge-nf-call-iptables, value: "1"}
+    - {key: net.bridge.bridge-nf-call-ip6tables, value: "1"}
+    - {key: net.ipv4.ip_forward, value: "1"}
+
+# ── Reboot falls nötig ───────────────────────────────────────
+- name: Handle reboot if required
+  when: auto_reboot_if_required
+  block:
+    - name: Check if reboot is needed
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_file
+
+    - name: Reboot if needed
+      ansible.builtin.reboot:
+        msg: "Rebooting after OS upgrade"
+        reboot_timeout: 300
+      when: reboot_file.stat.exists

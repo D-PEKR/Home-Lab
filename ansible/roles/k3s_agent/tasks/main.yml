@@ -1,0 +1,48 @@
+---
+# roles/k3s_agent/tasks/main.yml
+# Joined Node 95 als Worker in den bestehenden k3s-Cluster.
+
+- name: Check if k3s agent is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+- name: Download k3s install script
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: "0755"
+  when:
+    - not ansible_check_mode
+    - not k3s_binary.stat.exists or auto_upgrade
+
+- name: Install / upgrade k3s agent
+  ansible.builtin.shell: |
+    INSTALL_K3S_CHANNEL={{ k3s_channel }} \
+    K3S_TOKEN={{ k3s_token }} \
+    K3S_URL=https://{{ node_server_ip }}:6443 \
+    /tmp/k3s-install.sh agent \
+      --node-ip={{ node_agent_ip }}
+  changed_when: true
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - not k3s_binary.stat.exists or auto_upgrade
+
+- name: Wait for k3s agent service to start
+  ansible.builtin.systemd:
+    name: k3s-agent
+    state: started
+    enabled: true
+  when: not ansible_check_mode
+
+- name: Label storage node with hdd tag (auf Server delegieren)
+  ansible.builtin.shell: |
+    kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml label node \
+      node-95 \
+      node-role.kubernetes.io/worker=worker \
+      storage=hdd \
+      --overwrite
+  delegate_to: "{{ groups['k3s_server'][0] }}"
+  changed_when: true
+  when: not ansible_check_mode

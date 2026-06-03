@@ -1,0 +1,127 @@
+# argocd/apps/gitlab/values.yaml
+# GitLab CE unter https://gitlab.pke-lab.de
+# Alle persistenten Daten liegen auf Node 95 / HDD.
+# GitLab-Helm-Chart: https://docs.gitlab.com/charts/
+
+gitlab:
+  # ── Global ───────────────────────────────────────────────────
+  global:
+    edition: ce
+    hosts:
+      domain: pke-lab.de
+      https: true
+      gitlab:
+        name: gitlab.pke-lab.de
+        https: true
+      minio:
+        enabled: false  # Wir nutzen keine externen Object-Stores
+
+    # Ingress (Traefik)
+    ingress:
+      configureCertmanager: false   # Wir nutzen unseren ClusterIssuer
+      class: traefik
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-prod
+        traefik.ingress.kubernetes.io/router.entrypoints: websecure
+        traefik.ingress.kubernetes.io/router.tls: "true"
+      tls:
+        enabled: true
+        secretName: gitlab-tls
+
+    # PostgreSQL (intern)
+    psql:
+      password:
+        secret: gitlab-postgresql-password
+        key: postgresql-password
+
+    # E-Mail (optional – anpassen oder deaktivieren)
+    smtp:
+      enabled: false
+
+    # Gitlab-Shell
+    shell:
+      port: 22
+
+  # ── nodeSelector – ALLE GitLab-Pods auf Node 95 ──────────────
+  # Dies gilt als globaler Default und kann pro Chart überschrieben werden.
+  # nodeSelector wird in values als direktes Key/Value gesetzt.
+
+  # ── GitLab Rails (Webservice) ─────────────────────────────────
+  gitlab:
+    webservice:
+      replicaCount: 1
+      nodeSelector:
+        kubernetes.io/hostname: node-95
+      ingress:
+        enabled: true
+        tls:
+          secretName: gitlab-tls
+      persistence:
+        enabled: true
+        storageClass: gitlab-hdd
+        size: 10Gi
+
+    # Sidekiq (Background-Jobs)
+    sidekiq:
+      replicaCount: 1
+      nodeSelector:
+        kubernetes.io/hostname: node-95
+
+    # GitLab Shell (SSH)
+    gitlab-shell:
+      replicaCount: 1
+      nodeSelector:
+        kubernetes.io/hostname: node-95
+
+    # Gitaly (Git-Storage)
+    gitaly:
+      persistence:
+        enabled: true
+        storageClass: gitlab-hdd
+        size: 100Gi
+      nodeSelector:
+        kubernetes.io/hostname: node-95
+
+  # ── PostgreSQL ────────────────────────────────────────────────
+  postgresql:
+    install: true
+    primary:
+      nodeSelector:
+        kubernetes.io/hostname: node-95
+      persistence:
+        enabled: true
+        storageClass: gitlab-hdd
+        size: 50Gi
+    auth:
+      postgresPassword: changeme-use-sealed-secret
+
+  # ── Redis ─────────────────────────────────────────────────────
+  redis:
+    install: true
+    master:
+      nodeSelector:
+        kubernetes.io/hostname: node-95
+      persistence:
+        enabled: true
+        storageClass: gitlab-hdd
+        size: 5Gi
+
+  # ── MinIO deaktivieren (kein Object-Storage nötig) ────────────
+  minio:
+    enabled: false
+
+  # ── Registry ─────────────────────────────────────────────────
+  registry:
+    enabled: false   # Optional aktivieren für Container Registry
+
+  # ── Prometheus Monitoring ─────────────────────────────────────
+  prometheus:
+    install: false   # Wir haben eigenes VictoriaMetrics
+
+  # ── Certmanager – wir nutzen unseren eigenen ─────────────────
+  certmanager:
+    install: false
+
+  # ── Nginx – wir nutzen Traefik ────────────────────────────────
+  nginx-ingress:
+    enabled: false

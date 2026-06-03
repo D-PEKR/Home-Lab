@@ -1,0 +1,61 @@
+---
+# ══════════════════════════════════════════════════════════════
+#  group_vars/all.yml  –  Home-Lab pke-lab.de
+#  Sensible Secrets mit ansible-vault verschlüsseln!
+#  ansible-vault encrypt_string 'WERT' --name 'variable'
+# ══════════════════════════════════════════════════════════════
+
+# ── Allgemein ─────────────────────────────────────────────────
+timezone: Europe/Berlin
+locale: de_DE.UTF-8
+auto_upgrade: true
+auto_reboot_if_required: true
+
+# ── Netzwerk ──────────────────────────────────────────────────
+local_subnet: 192.168.178.0/24
+node_server_ip: 192.168.178.94
+node_agent_ip: 192.168.178.95
+ingress_vip: 192.168.178.200
+
+# ── Domain ────────────────────────────────────────────────────
+base_domain: pke-lab.de
+letsencrypt_email: admin@pke-lab.de
+letsencrypt_server: https://acme-v02.api.letsencrypt.org/directory
+# Zum Testen auf Staging wechseln (kein Rate-Limit):
+# letsencrypt_server: https://acme-staging-v02.api.letsencrypt.org/directory
+
+# ── k3s ───────────────────────────────────────────────────────
+k3s_channel: stable
+k3s_cluster_cidr: 10.42.0.0/16
+k3s_service_cidr: 10.43.0.0/16
+k3s_flannel_backend: vxlan
+k3s_token: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  # Ersetzen mit: ansible-vault encrypt_string "$(openssl rand -hex 32)" --name 'k3s_token'
+
+# ── ArgoCD ────────────────────────────────────────────────────
+argocd_namespace: argocd
+argocd_repo_url: https://github.com/D-PEKR/HomeLab.git
+argocd_repo_branch: main
+argocd_chart_version: ""
+
+# ── MetalLB ───────────────────────────────────────────────────
+metallb_namespace: metallb-system
+metallb_ip_pool: 192.168.178.200-192.168.178.210
+
+# ── cert-manager ──────────────────────────────────────────────
+cert_manager_namespace: cert-manager
+cert_manager_version: v1.14.5
+
+# ── GitLab ────────────────────────────────────────────────────
+gitlab_namespace: gitlab
+gitlab_hdd_path: /mnt/hdd/gitlab
+gitlab_node_name: node-95
+
+# ── Zammad ────────────────────────────────────────────────────
+zammad_namespace: zammad
+
+# ── Storage (HDD auf Node 95) ─────────────────────────────────
+hdd_device: /dev/sda
+hdd_mount_path: /mnt/hdd
+hdd_filesystem: ext4

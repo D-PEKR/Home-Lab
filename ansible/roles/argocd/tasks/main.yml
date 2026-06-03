@@ -1,0 +1,98 @@
+---
+# roles/argocd/tasks/main.yml
+# Installiert ArgoCD via Helm und bootstrapped den Root-ApplicationSet.
+
+- name: Check if Helm is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: helm_binary
+
+- name: Install Helm
+  ansible.builtin.shell: |
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - not helm_binary.stat.exists
+
+- name: Add ArgoCD Helm repo
+  kubernetes.core.helm_repository:
+    name: argo
+    repo_url: https://argoproj.github.io/argo-helm
+    binary_path: /usr/local/bin/helm
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when: not ansible_check_mode
+
+- name: Create ArgoCD namespace
+  kubernetes.core.k8s:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ argocd_namespace }}"
+  when: not ansible_check_mode
+
+- name: Install ArgoCD via Helm
+  kubernetes.core.helm:
+    name: argocd
+    chart_ref: argo/argo-cd
+    chart_version: "{{ argocd_chart_version | default(omit, true) }}"
+    release_namespace: "{{ argocd_namespace }}"
+    binary_path: /usr/local/bin/helm
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    values:
+      global:
+        domain: "argocd.{{ base_domain }}"
+      server:
+        ingress:
+          enabled: true
+          ingressClassName: traefik
+          annotations:
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+            traefik.ingress.kubernetes.io/router.entrypoints: websecure
+          hosts:
+            - "argocd.{{ base_domain }}"
+          tls:
+            - secretName: argocd-tls
+              hosts:
+                - "argocd.{{ base_domain }}"
+        extraArgs:
+          - --insecure
+      configs:
+        params:
+          server.insecure: true
+    wait: true
+  when: not ansible_check_mode
+
+- name: Wait for ArgoCD server to be ready
+  ansible.builtin.shell: |
+    kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n {{ argocd_namespace }} \
+      rollout status deployment/argocd-server --timeout=300s
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Apply Root ApplicationSet
+  kubernetes.core.k8s:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    state: present
+    src: "{{ playbook_dir }}/../argocd/bootstrap/root-applicationset.yaml"
+  when: not ansible_check_mode
+
+- name: Get ArgoCD initial admin password
+  ansible.builtin.shell: |
+    kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml -n {{ argocd_namespace }} \
+      get secret argocd-initial-admin-secret \
+      -o jsonpath='{.data.password}' | base64 -d
+  register: argocd_initial_password
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Print ArgoCD credentials
+  ansible.builtin.debug:
+    msg:
+      - "ArgoCD URL: https://argocd.{{ base_domain }}"
+      - "Username:   admin"
+      - "Password:   {{ argocd_initial_password.stdout | default('(check-mode)') }}"
