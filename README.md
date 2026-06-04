@@ -21,7 +21,7 @@
 
 ```bash
 # 1) Repo klonen
-git clone https://github.com/Jaydee94/home-server.git && cd home-server
+git clone https://github.com/D-PEKR/Home-Lab.git && cd Home-Lab
 
 # 2) Eigene Details eintragen (Server-IP, Repo-URL, Tailscale-Key)
 $EDITOR ansible/inventory/hosts.yml
@@ -80,8 +80,8 @@ Für reproduzierbare Builds `auto_upgrade: false` in `ansible/group_vars/all.yml
 **1. Repo klonen**
 
 ```bash
-git clone https://github.com/Jaydee94/home-server.git
-cd home-server
+git clone https://github.com/D-PEKR/Home-Lab.git
+cd Home-Lab
 ```
 
 **2. Inventory auf den eigenen Server zeigen lassen**
@@ -128,7 +128,7 @@ Password:   <auto-generiert>
 ## Repository-Layout
 
 ```
-home-server/
+Home-Lab/
 ├── README.md
 ├── Makefile                          # Convenience-Targets: install, lint, ping, check, …
 ├── docs/

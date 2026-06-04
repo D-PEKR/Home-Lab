@@ -20,7 +20,7 @@ spec:
     arguments:
       parameters:
         - name: repo
-          value: https://github.com/Jaydee94/home-server.git
+          value: https://github.com/D-PEKR/Home-Lab.git
         - name: revision
           value: main
         - name: image
