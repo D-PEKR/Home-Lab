@@ -1,68 +1,70 @@
 ---
-# ansible/site.yml – Entry-Point
-
-- name: Common OS hardening & packages
-  hosts: k3s_cluster
+- name: Home Server Setup
+  hosts: homeservers
   become: true
-  roles:
-    - common
+  gather_facts: true
 
-- name: Mount HDD on storage node
-  hosts: k3s_agent
-  become: true
-  roles:
-    - storage
-
-- name: Install k3s server node
-  hosts: k3s_server
-  become: true
-  roles:
-    - k3s_server
-
-- name: Join k3s agent nodes
-  hosts: k3s_agent
-  become: true
-  roles:
-    - k3s_agent
-
-- name: Deploy MetalLB
-  hosts: k3s_server
-  become: true
-  roles:
-    - metallb
-
-- name: Deploy cert-manager + ClusterIssuer
-  hosts: k3s_server
-  become: true
-  roles:
-    - cert_manager
-
-- name: Deploy ArgoCD + bootstrap ApplicationSet
-  hosts: k3s_server
-  become: true
-  roles:
-    - argocd
-
-- name: Print cluster info
-  hosts: k3s_server
-  tasks:
-    - name: Get ArgoCD initial admin password
-      ansible.builtin.shell: |
-        kubectl -n argocd get secret argocd-initial-admin-secret \
-          -o jsonpath='{.data.password}' | base64 -d
-      register: argocd_password
-      changed_when: false
-      when: not ansible_check_mode
-
-    - name: Print access info
+  pre_tasks:
+    - name: Display server info
       ansible.builtin.debug:
-        msg: |
-          ╔══════════════════════════════════════════════════════╗
-          ║           Home-Lab pke-lab.de ist bereit!           ║
-          ╠══════════════════════════════════════════════════════╣
-          ║  ArgoCD UI:  https://argocd.{{ base_domain }}       ║
-          ║  Username:   admin                                   ║
-          ║  Password:   {{ argocd_password.stdout | default('(check-mode)') }}
-          ╠══════════════════════════════════════════════════════╣
-          ║  MetalLB VIP:  {{ ingress_vip }}                    ║
-          ╚══════════════════════════════════════════════════════╝
+        msg:
+          - "Setting up home server: {{ inventory_hostname }}"
+          - "IP: {{ ansible_default_ipv4.address }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "CPU: {{ ansible_processor_count }} cores"
+          - "RAM: {{ ansible_memtotal_mb }} MB"
+
+  roles:
+    - role: common
+      tags: [common, base]
+    - role: dnsmasq
+      tags: [dnsmasq, dns]
+    - role: tailscale
+      tags: [tailscale, vpn]
+    - role: k3s
+      tags: [k3s, kubernetes]
+    - role: argocd
+      tags: [argocd, gitops]
+    - role: scanner
+      tags: [scanner, paperless]
+    - role: semaphore_secrets
+      tags: [semaphore, semaphore-secrets]
+
+  post_tasks:
+    - name: Display setup summary
+      ansible.builtin.debug:
+        msg:
+          - "======================================"
+          - "Home Server Setup Complete!"
+          - "======================================"
+          - "ArgoCD UI:    http://{{ ansible_default_ipv4.address }}:30080"
+          - "ArgoCD/TS:    http://{{ hostname }}:30080"
+          - "Semaphore UI: http://semaphore.homeserver"
+          - "kubectl:      kubectl get nodes"
+          - "======================================"
+
+# ============================================================
+# Distribute the Semaphore SSH key to every managed target so
+# Semaphore can SSH in non-interactively. Skipped automatically
+# when no target host is defined in the inventory.
+# ============================================================
+- name: Authorize Semaphore on managed targets
+  hosts: semaphore_targets
+  become: true
+  gather_facts: false
+  tags: [semaphore, semaphore-targets]
+  roles:
+    - role: semaphore_targets
+
+# ============================================================
+# After Semaphore is up and reachable, talk to its REST API and
+# provision Projects / Keys / Repositories / Inventories /
+# Templates so the UI is ready to use with zero manual clicks.
+# ============================================================
+- name: Bootstrap Semaphore projects via API
+  hosts: homeservers
+  become: true
+  gather_facts: false
+  tags: [semaphore, semaphore-bootstrap]
+  roles:
+    - role: semaphore_bootstrap

@@ -1,68 +1,215 @@
 ---
-# ══════════════════════════════════════════════════════════════
-#  group_vars/all.yml  –  Home-Lab pke-lab.de
-#  Sensible Secrets mit ansible-vault verschlüsseln!
-#  ansible-vault encrypt_string 'WERT' --name 'variable'
-# ══════════════════════════════════════════════════════════════
+# ============================================================
+# Configuration knobs for the home-server playbook.
+# Every value with a "CHANGE" comment must be set before running.
+# ============================================================
 
-# ── Allgemein ─────────────────────────────────────────────────
-timezone: Europe/Berlin
-locale: de_DE.UTF-8
+# ---- Server identity ---------------------------------------
+hostname: homeserver
+timezone: Europe/Berlin                # CHANGE: your timezone
+
+# ---- Upgrade strategy --------------------------------------
+# When true (default), every Ansible run keeps the OS and all installed
+# components on the latest available stable version, and enables
+# unattended-upgrades for background security patches between runs.
+# Set to false to pin everything for reproducibility/CI.
 auto_upgrade: true
+
+# Reboot the server at the end of the `common` role if a kernel/libc update
+# placed `/var/run/reboot-required` on disk.
 auto_reboot_if_required: true
 
-# ── Netzwerk ──────────────────────────────────────────────────
-local_subnet: 192.168.178.0/24
-node_server_ip: 192.168.178.94
-node_agent_ip: 192.168.178.95
-ingress_vip: 192.168.178.200
-
-# ── Domain ────────────────────────────────────────────────────
-base_domain: pke-lab.de
-letsencrypt_email: admin@pke-lab.de
-letsencrypt_server: https://acme-v02.api.letsencrypt.org/directory
-# Zum Testen auf Staging wechseln (kein Rate-Limit):
-# letsencrypt_server: https://acme-staging-v02.api.letsencrypt.org/directory
-
-# ── k3s ───────────────────────────────────────────────────────
+# ---- k3s ---------------------------------------------------
+# When `k3s_version` is empty, the role follows `k3s_channel` (always latest
+# release in that channel). Set to a concrete version like "v1.30.2+k3s1" to pin.
+# See https://github.com/k3s-io/k3s/releases and
+# https://update.k3s.io/v1-release/channels for available channels.
+k3s_version: ""
 k3s_channel: stable
-k3s_cluster_cidr: 10.42.0.0/16
-k3s_service_cidr: 10.43.0.0/16
-k3s_flannel_backend: vxlan
-k3s_token: !vault |
-  $ANSIBLE_VAULT;1.1;AES256
-  63336431333339323530386339316665303339656565333032346264383032366139346266656334
-  3531653736313530343264653932393839326130396564610a363837366233623831656137333762
-  34323532623839356438653363396537666362613438306233323035393031656230386434316535
-  3030653634336631350a613535663335316365613138303538393435353534613936643836333734
-  63376636316266663965626535616637613161663261353530343662623462303863313332343166
-  64663866343466373633356261636466643339343163383932356435313132303039663635306263
-  33336261643233623531663364363037386533636266393034373962366238343966383166643434
-  31623535363861383537
+k3s_server_ip: "{{ ansible_default_ipv4.address }}"
+k3s_pod_cidr: "10.42.0.0/16"
+k3s_service_cidr: "10.43.0.0/16"
 
-# ── ArgoCD ────────────────────────────────────────────────────
+# ---- Helm --------------------------------------------------
+# Empty = always install the latest Helm 3 release. Pin to e.g. "v3.16.0" if needed.
+helm_version: ""
+
+# ---- ArgoCD ------------------------------------------------
+# Argo Helm chart version. Empty + auto_upgrade=true ⇒ chart is upgraded to
+# latest on every run. Pin to a concrete chart version (e.g. "7.3.11") for
+# reproducibility — see https://artifacthub.io/packages/helm/argo/argo-cd
+argocd_version: ""
 argocd_namespace: argocd
-argocd_repo_url: https://github.com/D-PEKR/Home-Lab
-argocd_repo_branch: main
-argocd_chart_version: ""
+argocd_server_insecure: true
+# Git repo ArgoCD pulls from. Must be reachable by argocd-repo-server pod.
+argocd_repo_url: "https://github.com/Jaydee94/home-server.git"   # CHANGE if you forked
+# Branch/tag/SHA ArgoCD tracks. Pinned to `main` (the GitOps branch) instead of
+# the ambiguous `HEAD` for reproducible bootstraps; set a tag or SHA to freeze.
+argocd_repo_revision: main
 
-# ── MetalLB ───────────────────────────────────────────────────
-metallb_namespace: metallb-system
-metallb_ip_pool: 192.168.178.200-192.168.178.210
+# ---- Tailscale ---------------------------------------------
+# Generate the auth key at https://login.tailscale.com/admin/settings/keys
+# and ALWAYS store it vault-encrypted, e.g.:
+#   ansible-vault encrypt_string 'tskey-auth-...' --name 'tailscale_auth_key'
+# then paste the resulting `!vault |` block over the value below.
+tailscale_auth_key: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          32326136363530346431653061613536623865653235613933653634623030656664396333643663
+          6532373339613461656334363131656232336638393063350a666365636134363935333833303165
+          31363564363865663031356334616233306335333338343633333234376634636662316239306536
+          3935623934383737640a386362353836336136613961653661393138656130386335373237666337
+          30313862303036646437666263616365643062316239326132613365336636386234633634363432
+          31313761323532383432643737326330333631373939363334383833616161663536393433386137
+          333862306665313536613562376464613461
+tailscale_hostname: "{{ hostname }}"
 
-# ── cert-manager ──────────────────────────────────────────────
-cert_manager_namespace: cert-manager
-cert_manager_version: v1.14.5
+# ---- Local network ----------------------------------------
+local_subnet: "192.168.178.0/24"
 
-# ── GitLab ────────────────────────────────────────────────────
-gitlab_namespace: gitlab
-gitlab_hdd_path: /mnt/hdd/gitlab
-gitlab_node_name: node-95
+# ---- Semaphore UI -----------------------------------------
+# Master Ansible-Vault password — same value you type when running
+# `ansible-playbook --ask-vault-pass`. Semaphore uses this so playbooks
+# triggered from the UI can decrypt vault-encrypted vars. To rotate:
+#
+#   ansible-vault encrypt_string 'YOUR_VAULT_PW' \
+#     --name 'semaphore_vault_password'
+#   then paste the resulting `!vault |` block over the value below.
+semaphore_vault_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          34366462666430616162393037613935373364666564323933656533353961336262336130333735
+          3635333135613265666534353030643362623933663633320a373730633261303766616134376539
+          65333537343963356237356265306462303432356530623732363037343833386131613439386663
+          3637353530353538660a633234343661316332626135623264366564356337653733613763396663
+          3664
 
-# ── Zammad ────────────────────────────────────────────────────
-zammad_namespace: zammad
+# ---- Semaphore projects (auto-bootstrap) ------------------
+# After Semaphore is reachable, the `semaphore_bootstrap` role calls the
+# Semaphore REST API and idempotently creates two projects:
+#
+#   - home-server   (this repo, deployed against the home-server itself)
+#   - homeserver2   (dieses Repo, ansible/homeserver2.yml,
+#                    deployed to homeserver2 at 192.168.178.95)
+#
+# To add a third project, copy/extend the `semaphore_projects` list from
+# ansible/roles/semaphore_bootstrap/defaults/main.yml here. The role only
+# creates resources that don't already exist — to change an existing one,
+# delete it in the UI and re-run `make semaphore-bootstrap`.
 
-# ── Storage (HDD auf Node 95) ─────────────────────────────────
-hdd_device: /dev/sda
-hdd_mount_path: /mnt/hdd
-hdd_filesystem: ext4
+semaphore_projects:
+  - name: home-server
+    description: "Deploy / re-provision the home-server itself."
+    repository:
+      name: home-server-git
+      url: "{{ argocd_repo_url }}"
+      branch: main
+    environments:
+      - "{{ semaphore_default_environment }}"
+    inventories:
+      - name: homeservers
+        type: static
+        ssh_key: semaphore-ssh-key
+        content: |
+          [homeservers]
+          homeserver ansible_host=192.168.178.127
+    templates:
+      - name: "Deploy Home Server"
+        playbook: ansible/site.yml
+        inventory: homeservers
+        environment: default-env
+        vault_key: vault-password
+        description: "Run the full site.yml against the home-server (recursive)."
+    schedules:
+      - name: "Daily 06:00"
+        template: "Deploy Home Server"
+        cron: "0 6 * * *"
+        active: true
+
+  - name: homeserver2
+    description: "Deploy Docker-Compose-Dienste auf homeserver2 (192.168.178.95)."
+    repository:
+      name: home-server-git
+      url: "{{ argocd_repo_url }}"
+      branch: main
+    environments:
+      - "{{ semaphore_default_environment }}"
+    inventories:
+      - name: second_servers
+        type: static
+        ssh_key: semaphore-ssh-key
+        content: |
+          [second_servers]
+          homeserver2 ansible_host=192.168.178.95
+    templates:
+      - name: "Deploy homeserver2"
+        playbook: ansible/homeserver2.yml
+        inventory: second_servers
+        environment: default-env
+        vault_key: vault-password
+        description: "Paperless-NGX, TinyTeller, Day Pilot, Node Exporter auf homeserver2."
+    schedules:
+      - name: "Daily 06:00"
+        template: "Deploy homeserver2"
+        cron: "0 6 * * *"
+        active: true
+
+# ---- Scanner / Paperless Ingestion ------------------------
+# Fujitsu USB-Scanner direkt am Home-Server; scanbd hört auf den
+# Hardware-Button und schreibt Scans als PDF in den SMB-Share von
+# homeserver2, von wo Paperless-NGX sie automatisch einliest.
+# Vollständige Migrations-Checkliste: docs/10-scanner.md.
+#
+# USB-IDs auf dem Host ermitteln (`lsusb | grep -i fujitsu`):
+scanner_usb_vendor_id: "04c5"
+scanner_usb_product_id: "132b"
+#
+# Das SMB-Passwort MUSS vault-encrypted sein. Hinweis in docs/10-scanner.md.
+#   ansible-vault encrypt_string 'DEIN_SMB_PASSWORT' \
+#     --name 'scanner_smb_password'
+scanner_smb_share: "//192.168.178.95/personal_folder/paperless/consume"
+scanner_smb_username: "jaydee"
+scanner_smb_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          38376337663562376365653235303832613263333763356130346266356331326132356536336134
+          3230613564363762396363613562353162313930613439660a383361653563353236633465383337
+          65666435303130383263333464636365393238346334373637646465313263326263613262333037
+          3832393035343733340a633837356264323030323132613962636366633839373262373839386238
+          3261
+
+# ---- Gotify push notifications ----------------------------
+# Cluster-App: argocd/apps/gotify (Helm-Chart). Workflow + kubeseal-Schritte
+# stehen in docs/11-gotify.md.
+#
+# 1) Admin-Passwort für das initiale Login (SealedSecret im Cluster):
+#    ansible-vault encrypt_string 'DEIN_ADMIN_PW' --name 'gotify_admin_password'
+# gotify_admin_password: !vault | ...
+#
+# 2) App-Token aus dem Gotify-Web-UI (Applications → Create → "Scanner"):
+#    ansible-vault encrypt_string 'AppTokenXXX' --name 'scanner_gotify_token'
+scanner_gotify_enabled: true
+scanner_gotify_url: "http://gotify.homeserver"
+scanner_gotify_token: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          65623337633331656466393962373263323334643031626530393466373661636437653430666132
+          6536366237353232363563636331323332306265633035360a653737353937613363633530613639
+          33616332386161373662316262393030663863366161346637303731623936313233623631616162
+          3237653831646364620a666135303263366465323436656139303161343732326261313030646564
+          6437
+
+# ---- homeserver2 (192.168.178.95) --------------------------
+# sudo-Passwort für homeserver2 vault-verschlüsselt speichern:
+#   ansible-vault encrypt_string 'DEIN_SUDO_PW' --name 'vault_homeserver2_become_password'
+# vault_homeserver2_become_password: !vault | ...
+
+# ---- Optional: configure a static IP via Netplan ----------
+# Set to true to have Ansible deploy /etc/netplan/99-static.yaml.
+# WARNING: the SSH session will briefly drop while the new IP is applied.
+# Make sure `ansible_host` in the inventory matches `network_static_ip`
+# (or update it after the first run).
+network_configure_static_ip: false
+network_interface: "eno1"              # CHANGE: run `ip link show` on the server
+network_static_ip: "192.168.178.127"
+network_prefix_length: 24              # 24 = /24 = 255.255.255.0
+network_gateway: "192.168.178.1"
+network_dns:
+  - "1.1.1.1"
+  - "8.8.8.8"

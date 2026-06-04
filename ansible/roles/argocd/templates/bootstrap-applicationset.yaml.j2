@@ -1,0 +1,49 @@
+# Single source of truth for the bootstrap ApplicationSet.
+# The committed copy at argocd/bootstrap/root-applicationset.yaml is GENERATED
+# from this template — run `make render-bootstrap` after editing this file or
+# the argocd_repo_* / argocd_namespace vars in group_vars. Do not hand-edit the
+# committed copy.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: home-server-apps
+  namespace: {{ argocd_namespace }}
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: "{{ argocd_repo_url }}"
+        revision: "{{ argocd_repo_revision }}"
+        directories:
+          - path: "argocd/apps/*"
+  template:
+    metadata:
+      name: "{{ '{{' }}.path.basename{{ '}}' }}"
+    spec:
+      project: default
+      source:
+        repoURL: "{{ argocd_repo_url }}"
+        targetRevision: "{{ argocd_repo_revision }}"
+        path: "{{ '{{' }}.path.path{{ '}}' }}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{ '{{' }}.path.basename{{ '}}' }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        # CRD/CR bootstrap (e.g. victoria-metrics-operator installs the
+        # VMSingle CRD and a VMSingle resource in one sync) needs the
+        # dry-run skip + retry to converge on the first reconciliation.
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          - SkipDryRunOnMissingResource=true

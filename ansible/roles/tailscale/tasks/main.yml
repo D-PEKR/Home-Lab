@@ -1,0 +1,128 @@
+---
+# ============================================================
+# tailscale/tasks/main.yml — Tailscale VPN installation
+# ============================================================
+
+# ---- Add Tailscale Repository -------------------------------
+- name: Create directory for APT keyrings
+  ansible.builtin.file:
+    path: /usr/share/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download Tailscale GPG signing key
+  ansible.builtin.get_url:
+    url: "https://pkgs.tailscale.com/stable/ubuntu/{{ tailscale_repo_codename }}.noarmor.gpg"
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: '0644'
+    force: false
+
+- name: Add Tailscale APT repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
+      https://pkgs.tailscale.com/stable/ubuntu {{ tailscale_repo_codename }} main
+    filename: tailscale
+    state: present
+    update_cache: true
+
+# ---- Install Tailscale --------------------------------------
+# `state: latest` when auto_upgrade is on so we always run the most recent
+# Tailscale client; `state: present` otherwise to honour any local pin.
+- name: Install (or upgrade) tailscale package
+  ansible.builtin.apt:
+    name: tailscale
+    state: "{{ 'latest' if auto_upgrade | bool else 'present' }}"
+    update_cache: true
+
+# ---- Enable tailscaled service ------------------------------
+- name: Enable and start tailscaled service
+  ansible.builtin.systemd:
+    name: tailscaled
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Wait for tailscaled to be ready
+  ansible.builtin.wait_for:
+    path: /var/run/tailscale/tailscaled.sock
+    state: present
+    timeout: 30
+
+# ---- Check Existing Connection ------------------------------
+- name: Check current Tailscale connection status
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status_raw
+  changed_when: false
+  failed_when: false
+
+- name: Parse Tailscale status
+  ansible.builtin.set_fact:
+    tailscale_connected: >-
+      {{
+        (tailscale_status_raw.stdout | from_json).BackendState == 'Running'
+        if tailscale_status_raw.rc == 0 and tailscale_status_raw.stdout | length > 0
+        else false
+      }}
+
+- name: Display current Tailscale state
+  ansible.builtin.debug:
+    msg: "Tailscale connected: {{ tailscale_connected }}"
+
+# ---- Connect to Tailscale -----------------------------------
+# Pass the auth key via the TS_AUTHKEY env var so the secret never ends up
+# in the process list (unlike --authkey=tskey-auth-... on the command line).
+- name: Connect to Tailscale and advertise the local subnet
+  ansible.builtin.command: >
+    tailscale up
+    --hostname={{ tailscale_hostname }}
+    --advertise-routes={{ local_subnet }}
+    --accept-dns=true
+    --accept-routes=false
+  environment:
+    TS_AUTHKEY: "{{ tailscale_auth_key }}"
+  register: tailscale_up_result
+  changed_when: tailscale_up_result.rc == 0
+  no_log: true
+  when: not tailscale_connected
+
+- name: Refresh Tailscale options (already connected — update hostname/routes)
+  ansible.builtin.command: >
+    tailscale set
+    --hostname={{ tailscale_hostname }}
+    --advertise-routes={{ local_subnet }}
+  register: tailscale_set_result
+  changed_when: tailscale_set_result.rc == 0
+  failed_when: false
+  when: tailscale_connected
+
+# ---- IP Forwarding for Subnet Routing -----------------------
+# net.ipv4.ip_forward and net.ipv6.conf.all.forwarding (required for subnet
+# routing) are owned by the `common` role (/etc/sysctl.d/99-k3s.conf), which
+# runs before this role. Do not re-declare them here — a second sysctl file
+# would create two sources of truth for the same kernel parameters.
+
+# ---- Verify Connection --------------------------------------
+- name: Get final Tailscale status
+  ansible.builtin.command: tailscale status
+  register: tailscale_final_status
+  changed_when: false
+  retries: 6
+  delay: 5
+  until: tailscale_final_status.rc == 0
+
+- name: Get Tailscale IP address
+  ansible.builtin.command: tailscale ip -4
+  register: tailscale_ip
+  changed_when: false
+  failed_when: false
+
+- name: Display Tailscale connection info
+  ansible.builtin.debug:
+    msg:
+      - "Tailscale status: Connected"
+      - "Tailscale IP: {{ tailscale_ip.stdout | default('unknown') }}"
+      - "Hostname: {{ tailscale_hostname }}"
+      - "Advertised subnet: {{ local_subnet }}"
+      - "NOTE: Approve the advertised subnet route in the admin panel:"
+      - "      https://login.tailscale.com/admin/machines"

@@ -1,0 +1,29 @@
+---
+# Values passed through to the headlamp sub-chart.
+# All keys live under `headlamp:` because that is the dependency name.
+headlamp:
+  replicaCount: 1
+
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations: {}
+    hosts:
+      - host: headlamp.homeserver
+        paths:
+          - path: /
+            type: Prefix
+    tls: []
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  # The upstream chart creates a ServiceAccount named after the release.
+  # We bind it to cluster-admin in templates/clusterrolebinding.yaml.
+  serviceAccount:
+    create: true

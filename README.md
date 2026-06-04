@@ -1,751 +1,267 @@
-# HomeLab
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="home-server — GitOps Home Lab on k3s, ArgoCD, Tailscale" width="100%" />
+</p>
 
-Automatisiertes, GitOps-getriebenes Home-Lab auf zwei physischen Nodes.
-Ein einziger Ansible-Run provisioniert beide Nodes, richtet einen k3s-Cluster ein
-und bootstrapped ArgoCD, das von dort an alle Anwendungen aus diesem Repository
-selbststaendig deployed und aktuell haelt.
+<p align="center">
+  <a href="https://ubuntu.com/server"><img alt="Ubuntu" src="https://img.shields.io/badge/Ubuntu-26.04_LTS-E95420?style=for-the-badge&logo=ubuntu&logoColor=white"></a>
+  <a href="https://k3s.io"><img alt="k3s" src="https://img.shields.io/badge/k3s-v1.29-FFC61C?style=for-the-badge&logo=k3s&logoColor=black"></a>
+  <a href="https://argo-cd.readthedocs.io"><img alt="ArgoCD" src="https://img.shields.io/badge/ArgoCD-GitOps-EF7B4D?style=for-the-badge&logo=argo&logoColor=white"></a>
+  <a href="https://tailscale.com"><img alt="Tailscale" src="https://img.shields.io/badge/Tailscale-VPN-246FDB?style=for-the-badge&logo=tailscale&logoColor=white"></a>
+  <a href="https://www.ansible.com"><img alt="Ansible" src="https://img.shields.io/badge/Ansible-IaC-EE0000?style=for-the-badge&logo=ansible&logoColor=white"></a>
+</p>
 
----
-
-## Architektur
-
-```
-Internet
-    |
-    |  DNS: *.pke-lab.de  ->  oeffentliche IP
-    |  Router: Port 80/443  ->  192.168.178.200
-    v
-+--------------------------------------------------+
-|  Heimnetz 192.168.178.0/24                       |
-|                                                  |
-|  MetalLB VIP: 192.168.178.200  (Traefik)         |
-|                                                  |
-|  +---------------------+  +--------------------+ |
-|  |  Node 94            |  |  Node 95           | |
-|  |  192.168.178.94     |  |  192.168.178.95    | |
-|  |                     |  |                    | |
-|  |  k3s Control Plane  |  |  k3s Worker        | |
-|  |  + Worker           |  |                    | |
-|  |                     |  |  HDD /mnt/hdd      | |
-|  |  Traefik            |  |  GitLab-Daten      | |
-|  |  ArgoCD             |  |  GitLab-Pods       | |
-|  |  cert-manager       |  |  (nodeSelector)    | |
-|  |  MetalLB            |  |                    | |
-|  |  Zammad             |  |                    | |
-|  +---------------------+  +--------------------+ |
-+--------------------------------------------------+
-```
-
-### Komponenten
-
-| Komponente   | Namespace        | Zweck                                        |
-|--------------|------------------|----------------------------------------------|
-| k3s          | -                | Kubernetes-Cluster (Control Plane + Worker)  |
-| MetalLB      | metallb-system   | LoadBalancer-IPs im LAN per L2               |
-| Traefik      | traefik          | Ingress-Controller, 2 Replicas               |
-| cert-manager | cert-manager     | Automatische TLS-Zertifikate via Let's Encrypt|
-| ArgoCD       | argocd           | GitOps-Controller                            |
-| GitLab CE    | gitlab           | Git-Server, CI/CD (Storage auf Node 95 HDD)  |
-| Zammad       | zammad           | Helpdesk                                     |
-
-### Erreichbare Dienste nach dem Deployment
-
-| URL                          | Dienst            |
-|------------------------------|-------------------|
-| https://argocd.pke-lab.de    | ArgoCD            |
-| https://gitlab.pke-lab.de    | GitLab CE         |
-| https://zammad.pke-lab.de    | Zammad Helpdesk   |
-| https://traefik.pke-lab.de   | Traefik Dashboard |
+<p align="center">
+  <b>Vollständig automatisierter, GitOps-getriebener Home-Server auf einer einzigen Maschine.</b><br/>
+  Ein einziger Ansible-Run liefert einen gehärteten Ubuntu-Host, einen schlanken Kubernetes-Cluster (<a href="https://k3s.io">k3s</a>), Continuous Delivery aus Git (<a href="https://argo-cd.readthedocs.io">ArgoCD</a>) und Zero-Config-Remote-Access (<a href="https://tailscale.com">Tailscale</a>).
+</p>
 
 ---
 
-## Repository-Struktur
+## TL;DR
 
+```bash
+# 1) Repo klonen
+git clone https://github.com/Jaydee94/home-server.git && cd home-server
+
+# 2) Eigene Details eintragen (Server-IP, Repo-URL, Tailscale-Key)
+$EDITOR ansible/inventory/hosts.yml
+$EDITOR ansible/group_vars/all.yml
+
+# 3) Collections installieren und Playbook laufen lassen
+make install   # oder: ansible-galaxy collection install -r ansible/requirements.yml \
+               #       && ansible-playbook -i ansible/inventory/hosts.yml ansible/site.yml --ask-vault-pass
 ```
-HomeLab/
-+-- ansible/
-|   +-- site.yml                        Playbook-Einstiegspunkt
-|   +-- requirements.yml                Ansible Galaxy Collections
-|   +-- inventory/
-|   |   +-- hosts.yml                   Node 94 (server) + Node 95 (agent)
-|   +-- group_vars/
-|   |   +-- all.yml                     Alle Variablen, Vault-Secrets
-|   +-- roles/
-|       +-- common/                     OS-Hardening, UFW, sysctl
-|       +-- storage/                    HDD formatieren und mounten (Node 95)
-|       +-- k3s_server/                 k3s Control Plane auf Node 94
-|       +-- k3s_agent/                  k3s Worker auf Node 95
-|       +-- metallb/                    LoadBalancer IP-Pool
-|       +-- cert_manager/               TLS-Zertifikate
-|       +-- argocd/                     GitOps-Controller
-+-- argocd/
-|   +-- bootstrap/
-|   |   +-- root-applicationset.yaml    Bootstrapt alle Apps aus argocd/apps/
-|   +-- apps/
-|       +-- traefik/                    Ingress mit MetalLB LoadBalancer-IP
-|       +-- gitlab/                     GitLab CE mit HDD-Storage auf Node 95
-|       +-- zammad/                     Helpdesk
-+-- Makefile                            Convenience-Targets
-+-- README.md                           Diese Datei
-```
+
+Am Ende druckt das Playbook die ArgoCD-URL und das Admin-Passwort. Fertig.
 
 ---
 
-## Voraussetzungen
+## Was du bekommst
 
-### Hardware
+| Schicht          | Komponente                             | Hinweis                                                                |
+|------------------|----------------------------------------|------------------------------------------------------------------------|
+| Betriebssystem   | **Ubuntu Server 26.04 LTS**            | Gehärtet, UFW-Firewall, NTP-synced, Swap off                           |
+| Kubernetes       | **k3s** (latest stable channel)        | Single-Node, bundelt Traefik, CoreDNS, local-path, metrics-server      |
+| GitOps           | **ArgoCD** + ApplicationSets           | Verzeichnis unter `argocd/apps/` anlegen, pushen, deployt              |
+| Split-DNS        | **dnsmasq** auf `tailscale0` + LAN     | `*.homeserver` aus LAN und Tailnet auflösbar — kein öffentliches DNS   |
+| Web-Ansible      | **Semaphore UI**                       | Ein-Klick-`git pull && ansible-playbook` gegen das eigene LAN          |
+| Monitoring       | **VictoriaMetrics + Grafana**          | Single-Node TSDB, vmagent, vmalert, Alertmanager, Dashboards           |
+| Kubernetes-UI    | **Headlamp**                           | Browser-Dashboard für den Cluster                                      |
+| Secrets          | **Sealed Secrets + kubeseal-webgui**   | Verschlüsselte Secrets in Git, nur im Cluster entschlüsselbar          |
+| Dokumenten-Scan  | **scanbd + Fujitsu USB-Scanner**       | Bare-Metal-Scan-Daemon → CIFS → Paperless-NGX auf der NAS              |
+| Notifications    | **Gotify**                             | Self-hosted Push-Notifications (Android/iOS-Client)                    |
+| Remote-Access    | **Tailscale**                          | WireGuard-Mesh-VPN — keine Portfreigaben, keine öffentliche IP         |
+| CI/CD intern     | **Argo Workflows + MinIO**             | Private CI/CD-Pipeline + S3-Artifact-Store im Cluster                 |
+| Ingress          | **Traefik v2** (mit k3s gebundled)     | HTTP/HTTPS-Routing in den Cluster                                      |
+| Provisioning     | **Ansible** (≥ 2.14)                   | Vollständig idempotent, Role-per-Concern, Vault für Secrets            |
 
-- Node 94: beliebiger x86-Rechner, min. 4 GB RAM, min. 20 GB Disk
-  IP-Adresse: 192.168.178.94
-- Node 95: beliebiger x86-Rechner, min. 8 GB RAM (GitLab), Systemdisk + separate HDD
-  IP-Adresse: 192.168.178.95
-  Die separate HDD nimmt alle GitLab-Daten auf und wird von Ansible formatiert.
+Ziel-Hardware: kleine Box mit ≥ 4 GB RAM und ≥ 20 GB Disk. Referenz-Build: Intel i5, 32 GB RAM, 512 GB NVMe.
 
-### Workstation (Laptop oder Desktop, von dem Ansible ausgefuehrt wird)
+### Immer aktuell
 
-```
-Python >= 3.9
-Ansible >= 2.14
-kubectl
-```
+`auto_upgrade: true` (Default) hält bei jedem Playbook-Run den gesamten Stack aktuell:
 
-Installation:
+- **APT-Pakete** — `apt dist-upgrade` bei jedem Run, plus `unattended-upgrades` für tägliche Sicherheits-Patches im Hintergrund.
+- **Tailscale** — `state: latest` für das `tailscale`-Paket.
+- **k3s** — folgt `k3s_channel` (Default `stable`), der Upstream-Installer zieht jeweils den neuesten Release. Pin via `k3s_version`.
+- **Helm** — Re-Run des offiziellen Installers ersetzt das Binary, wenn ein neuerer Helm-3-Release existiert.
+- **ArgoCD** — `helm upgrade --install` ohne `--version` zieht das neueste Chart. Pin via `argocd_version`.
+- **Reboot-if-required** — wenn APT `/var/run/reboot-required` setzt, rebootet das Playbook den Host und wartet, bis er wieder oben ist (Toggle via `auto_reboot_if_required`).
 
-```
-pip install ansible ansible-lint
-curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-chmod +x kubectl
-sudo mv kubectl /usr/local/bin/kubectl
-```
-
-### SSH-Key
-
-```
-ssh-keygen -t ed25519 -C "homelab"
-ssh-copy-id ubuntu@192.168.178.94
-ssh-copy-id ubuntu@192.168.178.95
-```
-
-Verbindung testen:
-
-```
-ssh ubuntu@192.168.178.94 "hostname"
-ssh ubuntu@192.168.178.95 "hostname"
-```
+Für reproduzierbare Builds `auto_upgrade: false` in `ansible/group_vars/all.yml` setzen.
 
 ---
 
-## Deployment
+## Quickstart (5 Schritte)
 
-### Schritt 1 - Ubuntu Server auf beiden Nodes installieren
+> Erstmalig auf der Maschine? Start mit **[Ubuntu-Server-Installation](docs/00-ubuntu-server-install.md)**.
+> Komplette Voraussetzungen unter **[docs/02-prerequisites.md](docs/02-prerequisites.md)**.
 
-Ubuntu Server 24.04 LTS (minimale Installation) auf beiden Rechnern installieren.
+**1. Repo klonen**
 
-Waehrend der Installation:
-- Benutzername: ubuntu
-- SSH-Server installieren: ja
-- Swap: nicht einrichten (wird von Ansible deaktiviert)
-- Node 95: Systemdisk auf dem ersten Laufwerk, HDD frei lassen
-
-Nach der Installation sudo ohne Passwort einrichten (auf beiden Nodes):
-
-```
-echo "ubuntu ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/ubuntu
+```bash
+git clone https://github.com/Jaydee94/home-server.git
+cd home-server
 ```
 
-Statische IP setzen (auf beiden Nodes). Beispiel fuer Node 94:
+**2. Inventory auf den eigenen Server zeigen lassen**
 
-```
-sudo nano /etc/netplan/00-installer-config.yaml
-```
-
-```yaml
-network:
-  version: 2
-  ethernets:
-    ens18:
-      addresses: [192.168.178.94/24]
-      routes:
-        - to: default
-          via: 192.168.178.1
-      nameservers:
-        addresses: [192.168.178.1, 8.8.8.8]
+```bash
+$EDITOR ansible/inventory/hosts.yml
+# ansible_host (Server-IP) und ggf. ansible_ssh_private_key_file anpassen.
 ```
 
-Fuer Node 95 analog mit 192.168.178.95. Interface-Name mit `ip link show` pruefen.
+**3. Variablen setzen**
 
-```
-sudo netplan apply
-```
-
-
-### Schritt 2 - Repository klonen
-
-```
-git clone https://github.com/D-PEKR/HomeLab.git
-cd HomeLab
+```bash
+$EDITOR ansible/group_vars/all.yml
+# Pflicht: argocd_repo_url, local_subnet, timezone.
+# Tailscale-Key muss vault-encrypted sein (nächster Schritt).
 ```
 
+**4. Tailscale-Auth-Key verschlüsseln**
 
-### Schritt 3 - Konfiguration anpassen
-
-**HDD-Device auf Node 95 ermitteln:**
-
-```
-ssh ubuntu@192.168.178.95 "lsblk"
+```bash
+ansible-vault encrypt_string 'tskey-auth-DEIN_KEY' --name 'tailscale_auth_key'
+# Den !vault-Block in all.yml über den bestehenden tailscale_auth_key-Wert pasten.
 ```
 
-Die Ausgabe zeigt alle Laufwerke. Die Systemdisk ist typischerweise /dev/sda.
-Die separate HDD ist /dev/sdb oder /dev/sdc. Den Devicenamen notieren.
+**5. Playbook ausführen**
 
-**ansible/group_vars/all.yml anpassen:**
-
-Die folgenden Werte sind bereits auf das pke-lab.de-Setup voreingestellt.
-Bei abweichender Hardware oder Domain entsprechend aendern:
-
-```yaml
-# Netzwerk
-node_server_ip: 192.168.178.94
-node_agent_ip:  192.168.178.95
-ingress_vip:    192.168.178.200    # MetalLB-IP fuer Traefik
-
-# Domain
-base_domain:        pke-lab.de
-letsencrypt_email:  admin@pke-lab.de
-
-# HDD auf Node 95 (Device aus lsblk-Ausgabe eintragen)
-hdd_device:     /dev/sdb           # anpassen!
-hdd_mount_path: /mnt/hdd
-hdd_filesystem: ext4
-
-# ArgoCD - auf eigenes Repository zeigen lassen
-argocd_repo_url: https://github.com/D-PEKR/HomeLab.git
-```
-
-**ansible/inventory/hosts.yml pruefen:**
-
-```yaml
-k3s_server:
-  hosts:
-    node-94:
-      ansible_host: 192.168.178.94
-
-k3s_agent:
-  hosts:
-    node-95:
-      ansible_host: 192.168.178.95
-      hdd_device: /dev/sdb          # gleicher Wert wie in all.yml
-```
-
-
-### Schritt 4 - Secrets verschluesseln
-
-Der k3s-Cluster-Token verbindet Node 94 und Node 95. Er muss mit Ansible Vault
-verschluesselt in group_vars/all.yml gespeichert werden.
-
-Token generieren und verschluesseln:
-
-```
-make vault-k3s-token
-```
-
-Oder manuell:
-
-```
-ansible-vault encrypt_string "$(openssl rand -hex 32)" --name 'k3s_token'
-```
-
-Das Vault-Passwort wird bei diesem Befehl abgefragt und festgelegt.
-Es wird spaeter bei jedem Playbook-Run als --ask-vault-pass benoetigt.
-
-Die Ausgabe sieht so aus:
-
-```
-k3s_token: !vault |
-  $ANSIBLE_VAULT;1.1;AES256
-  61383534623130623338643831623538...
-  ...
-```
-
-Diesen Block komplett (einschliesslich der Zeile k3s_token: !vault |) in
-ansible/group_vars/all.yml an der Stelle des bestehenden k3s_token-Platzhalters
-einfuegen. Den Kommentar innerhalb des verschluesselten Blocks entfernen,
-da er den Vault-Block ungueltig macht.
-
-Korrekt:
-
-```yaml
-k3s_token: !vault |
-  $ANSIBLE_VAULT;1.1;AES256
-  61383534623130623338643831623538...
-  3666363535653238363438653132633835...
-
-# naechste Variable
-argocd_namespace: argocd
-```
-
-Falsch (Kommentar im Vault-Block):
-
-```yaml
-k3s_token: !vault |
-  $ANSIBLE_VAULT;1.1;AES256
-  61383534623130623338643831623538...
-  # dieser Kommentar hier macht den Block ungueltig
-```
-
-Vault-Block validieren:
-
-```
-ansible -i ansible/inventory/hosts.yml node-94 \
-  -m debug -a "var=k3s_token" \
-  --ask-vault-pass \
-  --playbook-dir ansible/
-```
-
-Bei korrekter Konfiguration gibt der Befehl den entschluesselten Token-String zurueck.
-
-
-### Schritt 5 - DNS bei Netcup einrichten
-
-Im Netcup-Kundenportal unter DNS-Verwaltung fuer pke-lab.de folgende Records anlegen:
-
-| Typ | Name | Wert                  | TTL |
-|-----|------|-----------------------|-----|
-| A   | @    | OEFFENTLICHE_IP       | 300 |
-| A   | *    | OEFFENTLICHE_IP       | 300 |
-
-Die oeffentliche IP ermitteln:
-
-```
-ssh ubuntu@192.168.178.94 "curl -s ifconfig.me"
-```
-
-Der Wildcard-Record *.pke-lab.de sorgt dafuer, dass jede Subdomain automatisch
-aufgeloest wird. Fuer neue Anwendungen ist kein weiterer DNS-Eintrag noetig.
-
-DNS nach ca. 5-15 Minuten pruefen:
-
-```
-dig argocd.pke-lab.de +short
-dig gitlab.pke-lab.de +short
-```
-
-Beide Befehle sollten die oeffentliche IP ausgeben.
-
-
-### Schritt 6 - Portweiterleitung im Router einrichten
-
-In der FritzBox unter Heimnetz > Netzwerk > NAT / Portfreigaben:
-
-| Externer Port | Interner Port | Ziel-IP          | Protokoll |
-|---------------|---------------|------------------|-----------|
-| 80            | 80            | 192.168.178.200  | TCP       |
-| 443           | 443           | 192.168.178.200  | TCP       |
-
-Die Ziel-IP 192.168.178.200 ist der MetalLB-VIP, den Traefik nach dem
-Ansible-Run bekommt. Die Weiterleitung kann vorab eingerichtet werden.
-
-
-### Schritt 7 - Ansible Galaxy Collections installieren
-
-```
-make deps
-```
-
-Oder manuell:
-
-```
-ansible-galaxy collection install -r ansible/requirements.yml
-```
-
-
-### Schritt 8 - Optionaler Dry-Run
-
-Der Check-Mode simuliert alle Tasks ohne echte Aenderungen. Netzwerk- und
-Cluster-abhaengige Tasks werden dabei uebersprungen, zeigt aber
-Konfigurationsfehler fruehzeitig auf.
-
-```
-make check
-```
-
-Oder nur fuer Common und Storage (zuverlaessiger im Check-Mode):
-
-```
-make check-base
-```
-
-
-### Schritt 9 - Playbook ausfuehren
-
-```
+```bash
 make install
-```
-
-Oder manuell:
-
-```
+# oder ohne make:
+ansible-galaxy collection install -r ansible/requirements.yml
 ansible-playbook -i ansible/inventory/hosts.yml ansible/site.yml --ask-vault-pass
 ```
 
-Das Playbook fuehrt folgende Schritte der Reihe nach aus:
-
-1. Common - Ubuntu-Hardening, UFW-Firewall, sysctl, br_netfilter auf beiden Nodes
-2. Storage - HDD auf Node 95 formatieren (nur wenn leer) und mounten
-3. k3s Server - k3s Control Plane + Worker auf Node 94, Helm-Installation
-4. k3s Agent - Node 95 joint den Cluster, Label storage=hdd wird gesetzt
-5. MetalLB - Helm-Deployment, IPAddressPool 192.168.178.200-210, L2Advertisement
-6. cert-manager - Helm-Deployment, ClusterIssuer fuer Let's Encrypt (Prod + Staging)
-7. ArgoCD - Helm-Deployment, Root-ApplicationSet bootstrapt alle Apps aus argocd/apps/
-
-Laufzeit: ca. 10-15 Minuten bei erstmaligem Run.
-
-Am Ende gibt das Playbook folgende Ausgabe:
+Am Ende druckt das Playbook:
 
 ```
-ArgoCD URL: https://argocd.pke-lab.de
+ArgoCD UI:  http://<server-ip>:30080
 Username:   admin
-Password:   <generiertes Passwort>
+Password:   <auto-generiert>
 ```
-
-
-### Schritt 10 - Deployment verifizieren
-
-**kubeconfig auf die Workstation holen:**
-
-```
-scp ubuntu@192.168.178.94:/etc/rancher/k3s/k3s.yaml ~/.kube/config-homelab
-sed -i 's/127.0.0.1/192.168.178.94/' ~/.kube/config-homelab
-export KUBECONFIG=~/.kube/config-homelab
-```
-
-**Cluster-Status pruefen:**
-
-```
-kubectl get nodes -o wide
-```
-
-Erwartete Ausgabe:
-
-```
-NAME      STATUS   ROLES                  AGE   INTERNAL-IP
-node-94   Ready    control-plane,master   5m    192.168.178.94
-node-95   Ready    worker                 4m    192.168.178.95
-```
-
-**MetalLB pruefen:**
-
-```
-kubectl -n metallb-system get pods
-kubectl -n metallb-system get ipaddresspool
-```
-
-**Traefik LoadBalancer-IP pruefen:**
-
-```
-kubectl -n traefik get svc
-```
-
-Die EXTERNAL-IP muss 192.168.178.200 zeigen.
-
-**ArgoCD Apps pruefen:**
-
-```
-kubectl -n argocd get applications
-```
-
-Nach ca. 3 Minuten sollten alle Apps den Status Synced/Healthy zeigen.
-
-**TLS-Zertifikate pruefen:**
-
-```
-kubectl get clusterissuer
-kubectl get certificates --all-namespaces
-```
-
-Alle ClusterIssuer und Certificates muessen READY=True zeigen.
-
-
-### Schritt 11 - ArgoCD Web-UI
-
-```
-https://argocd.pke-lab.de
-Benutzer: admin
-Passwort: make argocd-password
-```
-
-Von dort aus sind alle deployten Anwendungen sichtbar und verwaltbar.
-
-
-### Schritt 12 - GitLab initialisieren
-
-GitLab benoetigt beim ersten Start ca. 5-10 Minuten zum Hochfahren.
-
-```
-kubectl -n gitlab get pods -w
-```
-
-Alle Pods muessen Running/Ready sein, bevor die UI erreichbar ist.
-
-Initial-Passwort fuer den root-Benutzer:
-
-```
-kubectl -n gitlab get secret gitlab-gitlab-initial-root-password \
-  -o jsonpath='{.data.password}' | base64 -d; echo
-```
-
-Anmeldung unter https://gitlab.pke-lab.de mit Benutzer root und dem ausgegebenen Passwort.
-
-GitLab-Daten auf Node 95 pruefen:
-
-```
-ssh ubuntu@192.168.178.95 "df -h /mnt/hdd && ls -la /mnt/hdd/gitlab/"
-```
-
-
-### Schritt 13 - Zammad einrichten
-
-```
-kubectl -n zammad get pods -w
-```
-
-Elasticsearch benoetigt etwas laenger zum Starten. Sobald alle Pods Ready sind,
-ist die UI unter https://zammad.pke-lab.de erreichbar.
-
-Beim ersten Aufruf startet automatisch der Setup-Wizard:
-1. Sprache waehlen
-2. Admin-Konto anlegen
-3. System-URL bestaetigen: https://zammad.pke-lab.de
 
 ---
 
-## Neue Anwendung hinzufuegen
-
-Der Root-ApplicationSet erkennt automatisch jeden neuen Ordner unter argocd/apps/.
-Konvention: Ordnername = App-Name = Kubernetes-Namespace.
+## Repository-Layout
 
 ```
-mkdir -p argocd/apps/meine-app
+home-server/
+├── README.md
+├── Makefile                          # Convenience-Targets: install, lint, ping, check, …
+├── docs/
+│   ├── 00-ubuntu-server-install.md   # Bare-Metal-Ubuntu-Installation
+│   ├── 01-overview.md                # Architektur-Diagramme
+│   ├── 02-prerequisites.md           # Voraussetzungen & Pre-flight
+│   ├── 03-installation.md            # Step-by-Step-Setup
+│   ├── 04-k3s.md                     # k3s + kubectl-Referenz
+│   ├── 05-argocd.md                  # GitOps-Nutzung
+│   ├── 06-tailscale.md               # VPN-Setup
+│   ├── 07-troubleshooting.md         # Häufige Probleme
+│   ├── 08-semaphore.md               # Semaphore-Web-UI für Ansible
+│   ├── 09-dns-architecture.md        # Split-DNS-Design & Ausfallsicherheit
+│   ├── 10-scanner.md                 # Fujitsu-Scanner + scanbd + Paperless
+│   ├── 11-gotify.md                  # Push-Notifications via Gotify
+│   ├── 12-paperless-ai.md            # KI-Dokumentenanalyse für Paperless-NGX
+│   ├── 13-argo-workflows.md          # Private CI/CD mit Argo Workflows + MinIO
+│   └── assets/banner.svg
+├── ansible/
+│   ├── site.yml                      # Entry-Point
+│   ├── requirements.yml              # Galaxy-Collections
+│   ├── ansible.cfg                   # Defaults
+│   ├── inventory/hosts.yml           # Eigener Server (+ semaphore_targets)
+│   ├── group_vars/all.yml            # Alle Knobs (vault-verschlüsselte Secrets)
+│   └── roles/
+│       ├── common/                   # Base-OS, Firewall, Pakete
+│       ├── dnsmasq/                  # Split-DNS für *.homeserver
+│       ├── tailscale/                # VPN (WireGuard-Mesh)
+│       ├── k3s/                      # Single-Node-Kubernetes + Helm
+│       ├── argocd/                   # GitOps-Controller via Helm
+│       ├── scanner/                  # Fujitsu-USB-Scanner + scanbd + SMB
+│       ├── semaphore_secrets/        # Bootstrap-Secret für den Semaphore-Pod
+│       ├── semaphore_targets/        # SSH-Pubkey auf Managed-Hosts pushen
+│       └── semaphore_bootstrap/      # Projects/Inventories/Templates per API
+└── argocd/
+    ├── bootstrap/root-applicationset.yaml  # Erkennt jedes Verzeichnis darunter
+    └── apps/                               # Ein Ordner pro ArgoCD-Application
+        ├── example-whoami/                 # Referenz-Helm-Chart
+        ├── gotify/                         # Push-Notifications
+        ├── headlamp/                       # Kubernetes-Web-Dashboard
+        ├── kubeseal-webgui/                # Sealed-Secrets-Verschlüsselungs-UI
+        ├── monitoring/                     # VictoriaMetrics + Grafana
+        ├── argo-workflows/                 # Private CI/CD-Pipeline (Argo Workflows)
+        ├── minio/                          # S3-Artifact-Store für Argo Workflows
+        ├── paperless-ai/                   # KI-Dokumentenanalyse für Paperless-NGX
+        ├── sealed-secrets/                 # SealedSecrets-Controller
+        └── semaphore/                      # Ansible-Web-UI
 ```
-
-Minimales Helm-Chart anlegen:
-
-```
-# argocd/apps/meine-app/Chart.yaml
-apiVersion: v2
-name: meine-app
-version: 0.1.0
-dependencies:
-  - name: chart-name
-    version: ">=1.0.0"
-    repository: https://charts.example.com
-```
-
-Ingress mit automatischem TLS in values.yaml:
-
-```
-# argocd/apps/meine-app/values.yaml
-chart-name:
-  ingress:
-    enabled: true
-    className: traefik
-    annotations:
-      cert-manager.io/cluster-issuer: letsencrypt-prod
-      traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    hosts:
-      - host: meine-app.pke-lab.de
-        paths:
-          - path: /
-            pathType: Prefix
-    tls:
-      - secretName: meine-app-tls
-        hosts:
-          - meine-app.pke-lab.de
-```
-
-Committen und pushen:
-
-```
-git add argocd/apps/meine-app
-git commit -m "feat: add meine-app"
-git push
-```
-
-ArgoCD erkennt den neuen Ordner innerhalb von ca. 3 Minuten und deployt die App.
-Ein neuer DNS-Eintrag ist nicht noetig, der Wildcard-Record ist bereits aktiv.
 
 ---
 
-## Betrieb und Wartung
+## Monitoring
 
-### Cluster aktualisieren
+Ein schlanker VictoriaMetrics-+-Grafana-Stack lebt unter
+`argocd/apps/monitoring/` und wird automatisch von ArgoCD ausgerollt.
 
+- **TSDB:** VMSingle (15 Tage Retention, 10 Gi `local-path`-PVC).
+- **Scrapers:** VMAgent scrapet alle `VMServiceScrape`/`VMPodScrape` und
+  zusätzlich Prometheus-`ServiceMonitor`-CRDs (vom Operator auto-konvertiert).
+- **Host-Metriken:** `prometheus-node-exporter` als DaemonSet auf dem Ubuntu-Host.
+- **Cluster-Metriken:** kubelet/cAdvisor, kube-apiserver, kube-state-metrics, CoreDNS.
+  Scheduler/Controller-Manager/etcd-Scrapes sind deaktiviert — k3s vereint sie in einem Prozess.
+- **Alerts:** Default-kube-prometheus-Rules, geroutet auf einen `blackhole`-Receiver,
+  bis Discord/Slack/Gotify in `values.yaml` verdrahtet ist.
+- **Dashboards:** Node Exporter Full, VictoriaMetrics + Kubernetes „Views / Global, Namespaces, Nodes, Pods" von grafana.com.
+
+Grafana öffnen unter **http://grafana.homeserver** (LAN + Tailnet via dnsmasq).
+User `admin`, Passwort aus dem auto-generierten Secret:
+
+```bash
+kubectl -n monitoring get secret monitoring-grafana \
+  -o jsonpath='{.data.admin-password}' | base64 -d; echo
 ```
-make install
-```
-
-Der Ansible-Run ist vollstaendig idempotent. Er aktualisiert Pakete, k3s und
-alle Helm-Charts wenn auto_upgrade: true in group_vars/all.yml gesetzt ist.
-
-### Nur einzelne Rollen ausfuehren
-
-```
-ansible-playbook -i ansible/inventory/hosts.yml ansible/site.yml \
-  --ask-vault-pass --tags common
-```
-
-Verfuegbare Tags entsprechen den Rollennamen: common, storage, k3s_server,
-k3s_agent, metallb, cert_manager, argocd.
-
-### ArgoCD-Apps manuell synchronisieren
-
-```
-# Alle Apps
-kubectl -n argocd get applications
-
-# Einzelne App per kubectl
-kubectl -n argocd patch application gitlab \
-  --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{}}}'
-```
-
-### Zertifikate pruefen
-
-```
-kubectl get certificates --all-namespaces
-kubectl get certificaterequests --all-namespaces
-```
-
-### Node 95 fuer Wartung drainieren
-
-```
-kubectl drain node-95 --ignore-daemonsets --delete-emptydir-data
-# Wartung durchfuehren
-kubectl uncordon node-95
-```
-
-### GitLab-Backup erstellen
-
-```
-kubectl -n gitlab exec deploy/gitlab-webservice -- \
-  gitlab-backup create BACKUP=manual
-```
-
-Das Backup liegt auf der HDD unter /mnt/hdd/gitlab/data/backups/ auf Node 95.
 
 ---
 
-## Troubleshooting
+## Application hinzufügen (der GitOps-Weg)
 
-### MetalLB vergibt keine IP
-
-```
-kubectl -n metallb-system describe ipaddresspool homelab-pool
-kubectl -n metallb-system logs deploy/metallb-controller
-```
-
-Haeufige Ursache: MetalLB-Webhook noch nicht bereit. Einige Sekunden warten
-und erneut pruefen.
-
-### Let's Encrypt Zertifikat schlaegt fehl
-
-```
-kubectl describe certificate -n <namespace> <zertifikat-name>
-kubectl -n cert-manager logs deploy/cert-manager
+```bash
+mkdir -p argocd/apps/my-app
+# Plain Kubernetes-YAML, kustomization.yaml oder ein Helm-Chart hineinlegen.
+git add argocd/apps/my-app && git commit -m "feat(apps): add my-app" && git push
 ```
 
-Checkliste:
-- Ist Port 80 vom Internet aus erreichbar? Test: curl http://pke-lab.de
-- Zeigt dig pke-lab.de +short die oeffentliche IP?
-- Ist die Portweiterleitung im Router aktiv?
-
-Zum Testen ohne Rate-Limit den Staging-Issuer verwenden. In group_vars/all.yml:
-
-```yaml
-letsencrypt_server: https://acme-staging-v02.api.letsencrypt.org/directory
-```
-
-### GitLab-Pod startet nicht
-
-```
-kubectl -n gitlab describe pod <pod-name>
-kubectl -n gitlab logs <pod-name> --previous
-```
-
-HDD-Mount pruefen:
-
-```
-ssh ubuntu@192.168.178.95 "mount | grep hdd && ls /mnt/hdd/gitlab/"
-```
-
-PersistentVolumes pruefen:
-
-```
-kubectl get pv | grep gitlab
-kubectl get pvc -n gitlab
-```
-
-Alle PVCs muessen Bound sein.
-
-### k3s Agent verbindet sich nicht
-
-Auf Node 95 pruefen:
-
-```
-ssh ubuntu@192.168.178.95 "sudo systemctl status k3s-agent"
-ssh ubuntu@192.168.178.95 "sudo journalctl -u k3s-agent -n 50"
-```
-
-Haeufige Ursache: k3s_token stimmt nicht ueberein oder Node 94 ist noch nicht
-vollstaendig hochgefahren.
-
-### Traefik hat keine EXTERNAL-IP
-
-```
-kubectl -n metallb-system get pods -o wide
-kubectl -n metallb-system logs deploy/metallb-speaker -c speaker
-```
-
-Der MetalLB Speaker muss auf beiden Nodes laufen (DaemonSet).
-
-### Ansible-Vault Fehler "Odd-length string"
-
-Ein Kommentar innerhalb des Vault-Blocks in group_vars/all.yml macht den
-verschluesselten Wert ungueltig. Den Block pruefen:
-
-```
-grep -n '' ansible/group_vars/all.yml | sed -n '34,50p'
-```
-
-Alle eingerueckten Zeilen zwischen !vault | und der naechsten uneingerueckten
-Variable muessen ausschliesslich hexadezimale Zeilen des verschluesselten Werts
-enthalten. Kommentarzeilen innerhalb des Blocks entfernen.
+Innerhalb von ~3 Minuten erkennt ArgoCD das neue Verzeichnis, erstellt eine
+`Application` namens `my-app` im Namespace `my-app` und synct sie.
+Details: **[docs/05-argocd.md](docs/05-argocd.md)**.
 
 ---
 
-## Makefile-Referenz
+## Networking & Security
 
-| Target             | Beschreibung                                      |
-|--------------------|---------------------------------------------------|
-| make install       | Vollstaendigen Ansible-Run ausfuehren             |
-| make check         | Dry-Run ohne Aenderungen                          |
-| make check-base    | Dry-Run nur fuer Common und Storage               |
-| make ping          | SSH-Verbindung zu allen Nodes testen              |
-| make deps          | Ansible Galaxy Collections installieren           |
-| make lint          | Ansible-Linting ausfuehren                        |
-| make cluster-info  | Nodes, fehlerhafte Pods und ArgoCD Apps anzeigen  |
-| make argocd-password | ArgoCD Admin-Passwort ausgeben                  |
-| make vault-encrypt | Beliebigen Wert mit Vault verschluesseln          |
-| make vault-k3s-token | Neuen k3s-Token generieren und verschluesseln   |
+- **Keine öffentlichen Ports.** Internet-Zugriff geht ausschließlich über Tailscale.
+- **UFW** erlaubt nur, was der Stack braucht: SSH, HTTP/HTTPS, k3s-API, ArgoCD-NodePort, kubelet, Flannel VXLAN, Tailscale-UDP, plus volles Trust für LAN, Tailnet, Pod- und Service-CIDRs.
+- **Ansible-Vault** verschlüsselt sensitive Secrets at rest.
+- **ArgoCD** hat ausschließlich Read-Access auf das Git-Repo.
+
+| Port  | Protokoll | Scope             | Zweck                                  |
+|-------|-----------|-------------------|----------------------------------------|
+| 22    | TCP       | LAN + Tailnet     | SSH                                    |
+| 53    | UDP+TCP   | LAN + Tailnet     | dnsmasq Split-DNS für `*.homeserver`   |
+| 80    | TCP       | LAN + Tailnet     | Traefik HTTP                           |
+| 443   | TCP       | LAN + Tailnet     | Traefik HTTPS                          |
+| 6443  | TCP       | LAN + Tailnet     | k3s-API                                |
+| 30080 | TCP       | LAN + Tailnet     | ArgoCD-UI (HTTP)                       |
+| 30443 | TCP       | LAN + Tailnet     | ArgoCD-UI (HTTPS)                      |
+| 41641 | UDP       | Internet          | Tailscale-WireGuard                    |
+
+Vollständige Architektur in **[docs/01-overview.md](docs/01-overview.md)**.
 
 ---
 
-## Sicherheitshinweise
+## Dokumentation
 
-- Das Ansible-Vault-Passwort niemals committen. Die .gitignore schliesst
-  .vault_pass bereits aus.
-- k3s_token ist ein geteiltes Secret zwischen den Nodes. Nur mit Vault
-  verschluesselt in Git speichern.
-- Port 22 (SSH) ist per UFW nur aus dem LAN erreichbar.
-- Alle oeffentlich erreichbaren Dienste laufen ausschliesslich ueber HTTPS
-  mit automatisch erneuertem Let's Encrypt Zertifikat.
-- ArgoCD hat nur Lesezugriff auf dieses Repository.
+| Doc                                                             | Inhalt                                       |
+|-----------------------------------------------------------------|----------------------------------------------|
+| [Ubuntu-Server-Installation](docs/00-ubuntu-server-install.md)  | ISO, USB-Stick, Installer, erster Boot       |
+| [Architektur-Überblick](docs/01-overview.md)                    | Komponenten und Traffic-Flows                |
+| [Voraussetzungen](docs/02-prerequisites.md)                     | Was vor dem Ansible-Run nötig ist            |
+| [Installationsleitfaden](docs/03-installation.md)               | Vollständiger Step-by-Step-Walkthrough       |
+| [k3s-Referenz](docs/04-k3s.md)                                  | Config, kubectl-Cheatsheet, Upgrades         |
+| [ArgoCD-GitOps](docs/05-argocd.md)                              | App-Workflow, CLI, Sync-Policies             |
+| [Tailscale-VPN](docs/06-tailscale.md)                           | Auth-Keys, MagicDNS, Subnet-Routes           |
+| [Troubleshooting](docs/07-troubleshooting.md)                   | Diagnose-Playbook für häufige Probleme       |
+| [Semaphore-UI](docs/08-semaphore.md)                            | Web-UI zum Ausführen von Playbooks           |
+| [DNS-Architektur](docs/09-dns-architecture.md)                  | Warum der Home-Server NICHT dein LAN-DNS ist |
+| [Scanner & Paperless](docs/10-scanner.md)                       | Fujitsu-USB-Scanner → CIFS → Paperless-NGX   |
+| [Gotify-Push](docs/11-gotify.md)                                | Self-hosted Push-Notifications aus dem Stack |
+| [Paperless-AI](docs/12-paperless-ai.md)                         | KI-Dokumentenanalyse + RAG für Paperless-NGX |
+| [Argo Workflows](docs/13-argo-workflows.md)                     | Private CI/CD-Pipeline mit MinIO-Artifact-Store |
+
+---
+
+## Lizenz
+
+MIT — siehe [LICENSE](LICENSE).

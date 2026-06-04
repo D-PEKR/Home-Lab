@@ -1,0 +1,23 @@
+---
+# ============================================================
+# Second-Server Playbook — deployt Docker-Compose-basierte Dienste auf
+# homeserver2 (192.168.178.95).
+#
+# Run with:
+#   make homeserver2
+# Dry-run:
+#   make homeserver2-check
+# ============================================================
+
+- name: Deploy second-server services
+  hosts: second_servers
+  become: true
+  roles:
+    - role: paperless
+      tags: [paperless]
+    - role: node_exporter_nas
+      tags: [node-exporter]
+    - role: tinyteller
+      tags: [tinyteller]
+    - role: day_pilot
+      tags: [day-pilot]

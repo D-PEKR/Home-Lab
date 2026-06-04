@@ -1,157 +1,371 @@
 ---
-# roles/common/tasks/main.yml
-# Basis-OS-Hardening, UFW-Firewall, Pakete fuer alle Nodes.
+# ============================================================
+# common/tasks/main.yml — Base OS configuration
+# ============================================================
 
-- name: Set hostname
+# ---- Hostname -----------------------------------------------
+- name: Set system hostname
   ansible.builtin.hostname:
-    name: "{{ inventory_hostname }}"
+    name: "{{ hostname }}"
+    use: systemd
 
-- name: Set timezone
-  community.general.timezone:
-    name: "{{ timezone }}"
-
-- name: Disable swap permanently
-  ansible.builtin.command: swapoff -a
-  changed_when: false
-
-- name: Remove swap from fstab
+- name: Update /etc/hosts with hostname
   ansible.builtin.lineinfile:
-    path: /etc/fstab
-    regexp: '^\S+\s+\S+\s+swap\s+'
-    state: absent
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: "127.0.1.1 {{ hostname }}"
+    state: present
 
-- name: Update and upgrade packages
+# ---- Package Management ------------------------------------
+- name: Update apt cache
   ansible.builtin.apt:
-    upgrade: dist
     update_cache: true
     cache_valid_time: 3600
-  when: auto_upgrade
 
-- name: Install required packages
+- name: Upgrade all packages to latest (dist-upgrade)
+  ansible.builtin.apt:
+    upgrade: dist
+    autoremove: true
+    autoclean: true
+  when: auto_upgrade | bool
+
+- name: Install required system packages
   ansible.builtin.apt:
     name:
       - curl
       - wget
       - git
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - python3-pip
+      - python3-kubernetes
+      - nfs-common
+      - open-iscsi
+      - chrony
+      - jq
+      - unzip
+      - net-tools
       - htop
       - vim
+      - bash-completion
       - ufw
-      - chrony
-      - open-iscsi
-      - nfs-common
-      - jq
-      - python3-pip
-      - python3-setuptools
-    state: present
+      - unattended-upgrades
+      - update-notifier-common   # provides /var/run/reboot-required
+    state: "{{ 'latest' if auto_upgrade | bool else 'present' }}"
 
-# Python-Bibliotheken fuer kubernetes.core.k8s und kubernetes.core.helm
-- name: Install Python kubernetes library
-  ansible.builtin.pip:
-    name:
-      - kubernetes
-      - PyYAML
-      - jsonpatch
-    state: present
-    extra_args: --break-system-packages
+# ---- Unattended upgrades (background security patches) -----
+- name: Enable unattended-upgrades (security patches between Ansible runs)
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      // Managed by Ansible — controls unattended-upgrades cadence.
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Download-Upgradeable-Packages "1";
+      APT::Periodic::AutocleanInterval "7";
+      APT::Periodic::Unattended-Upgrade "1";
 
-- name: Enable and start chrony (NTP)
+- name: Configure unattended-upgrades to also pull "updates" and clean up
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/51unattended-upgrades-home-server
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      // Managed by Ansible.
+      Unattended-Upgrade::Allowed-Origins {
+          "${distro_id}:${distro_codename}";
+          "${distro_id}:${distro_codename}-security";
+          "${distro_id}ESMApps:${distro_codename}-apps-security";
+          "${distro_id}ESM:${distro_codename}-infra-security";
+          "${distro_id}:${distro_codename}-updates";
+      };
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      Unattended-Upgrade::Automatic-Reboot "false";
+
+- name: Ensure unattended-upgrades service is enabled
   ansible.builtin.systemd:
+    name: unattended-upgrades
+    enabled: true
+    state: started
+
+# ---- Timezone -----------------------------------------------
+- name: Set system timezone
+  community.general.timezone:
+    name: "{{ timezone }}"
+  notify: Restart chrony
+
+# ---- Chrony (NTP) -------------------------------------------
+- name: Ensure chrony is enabled and running
+  ansible.builtin.service:
     name: chrony
     state: started
     enabled: true
 
-# ── UFW Firewall ──────────────────────────────────────────────
-- name: Configure UFW - default deny
-  community.general.ufw:
-    state: enabled
-    default: deny
-    direction: incoming
+# ---- Swap ---------------------------------------------------
+- name: Check for active swap devices
+  ansible.builtin.command: swapon --noheadings --show=NAME
+  register: common_active_swap
+  changed_when: false
 
-- name: UFW - SSH
+- name: Disable swap immediately
+  ansible.builtin.command: swapoff -a
+  when: common_active_swap.stdout | trim | length > 0
+  changed_when: true
+
+- name: Remove swap entries from /etc/fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\s+swap\s+.*)$'
+    replace: '# \1'
+
+- name: Ensure swap is not re-enabled by systemd
+  ansible.builtin.systemd:
+    name: swap.target
+    enabled: false
+    state: stopped
+    masked: true
+
+# ---- Kernel Modules -----------------------------------------
+- name: Create modules-load.d config for k3s/Kubernetes
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k3s.conf
+    content: |
+      br_netfilter
+      overlay
+    mode: '0644'
+
+- name: Load required kernel modules for k3s/Kubernetes
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - br_netfilter
+    - overlay
+
+# ---- sysctl -------------------------------------------------
+- name: Configure sysctl parameters for Kubernetes
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/99-k3s.conf
+    reload: true
+    state: present
+  loop:
+    - {key: "net.ipv4.ip_forward", value: "1"}
+    - {key: "net.bridge.bridge-nf-call-iptables", value: "1"}
+    - {key: "net.bridge.bridge-nf-call-ip6tables", value: "1"}
+    - {key: "net.ipv6.conf.all.forwarding", value: "1"}
+    - {key: "fs.inotify.max_user_watches", value: "524288"}
+    - {key: "fs.inotify.max_user_instances", value: "512"}
+    - {key: "vm.swappiness", value: "0"}
+  notify: Reload sysctl
+
+# ---- UFW Firewall -------------------------------------------
+# NOTE: we never call `state: reset` — that would wipe SSH access mid-playbook.
+# Allow SSH FIRST so enabling UFW later cannot lock us out.
+- name: Allow SSH (port 22) before any other firewall changes
   community.general.ufw:
     rule: allow
     port: "22"
     proto: tcp
+    comment: "SSH"
 
-- name: UFW - HTTP + HTTPS (nur auf Server-Node)
+- name: Set UFW default incoming policy to deny
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: Set UFW default outgoing policy to allow
+  community.general.ufw:
+    default: allow
+    direction: outgoing
+
+- name: Allow HTTP (port 80) for Traefik ingress
   community.general.ufw:
     rule: allow
-    port: "{{ item }}"
+    port: "80"
     proto: tcp
-  loop:
-    - "80"
-    - "443"
-  when: inventory_hostname in groups['k3s_server']
+    comment: "HTTP Traefik ingress"
 
-- name: UFW - k3s API
+- name: Allow HTTPS (port 443)
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+    comment: "HTTPS Traefik ingress"
+
+- name: Allow k3s API server (port 6443)
   community.general.ufw:
     rule: allow
     port: "6443"
     proto: tcp
+    comment: "k3s Kubernetes API"
 
-- name: UFW - k3s Kubelet
+- name: Allow ArgoCD NodePort HTTP (port 30080)
   community.general.ufw:
     rule: allow
-    port: "10250"
+    port: "30080"
     proto: tcp
-    src: "{{ local_subnet }}"
+    comment: "ArgoCD web UI HTTP"
 
-- name: UFW - Flannel VXLAN (Cluster-intern)
+- name: Allow ArgoCD NodePort HTTPS (port 30443)
+  community.general.ufw:
+    rule: allow
+    port: "30443"
+    proto: tcp
+    comment: "ArgoCD web UI HTTPS"
+
+- name: Allow Tailscale WireGuard (UDP 41641)
+  community.general.ufw:
+    rule: allow
+    port: "41641"
+    proto: udp
+    comment: "Tailscale WireGuard VPN"
+
+- name: Allow Flannel VXLAN overlay network (UDP 8472)
   community.general.ufw:
     rule: allow
     port: "8472"
     proto: udp
-    src: "{{ local_subnet }}"
+    comment: "Flannel VXLAN pod overlay network"
 
-- name: UFW - LAN full trust
+- name: Allow kubelet API (port 10250)
   community.general.ufw:
     rule: allow
-    src: "{{ local_subnet }}"
+    port: "10250"
+    proto: tcp
+    comment: "k3s kubelet API"
 
-- name: UFW - Pod CIDR full trust
+- name: Allow all traffic from k3s pod CIDR
   community.general.ufw:
     rule: allow
-    src: "{{ k3s_cluster_cidr }}"
+    src: "{{ k3s_pod_cidr }}"
+    comment: "k3s pod CIDR traffic"
 
-- name: UFW - Service CIDR full trust
+- name: Allow all traffic from k3s service CIDR
   community.general.ufw:
     rule: allow
     src: "{{ k3s_service_cidr }}"
+    comment: "k3s service CIDR traffic"
 
-# ── Kernel: br_netfilter VOR sysctl laden ─────────────────────
-- name: Persist br_netfilter (load on boot)
-  ansible.builtin.copy:
-    content: "br_netfilter\n"
-    dest: /etc/modules-load.d/br_netfilter.conf
-    mode: "0644"
+- name: Allow all traffic from local LAN subnet
+  community.general.ufw:
+    rule: allow
+    src: "{{ local_subnet }}"
+    comment: "Local LAN subnet access"
 
-- name: Load br_netfilter module now
-  community.general.modprobe:
-    name: br_netfilter
-    state: present
+- name: Allow all traffic from Tailscale network
+  community.general.ufw:
+    rule: allow
+    src: "100.64.0.0/10"
+    comment: "Tailscale VPN network"
 
-- name: Set sysctl for k3s
-  ansible.posix.sysctl:
-    name: "{{ item.key }}"
-    value: "{{ item.value }}"
-    state: present
-    reload: true
-  loop:
-    - {key: net.bridge.bridge-nf-call-iptables, value: "1"}
-    - {key: net.bridge.bridge-nf-call-ip6tables, value: "1"}
-    - {key: net.ipv4.ip_forward, value: "1"}
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
 
-# ── Reboot falls noetig ──────────────────────────────────────
-- name: Handle reboot if required
-  when: auto_reboot_if_required
+- name: Verify UFW is active
+  ansible.builtin.command: ufw status verbose
+  register: common_ufw_status
+  changed_when: false
+
+- name: Display UFW status
+  ansible.builtin.debug:
+    var: common_ufw_status.stdout_lines
+
+# ---- Static IP via Netplan ----------------------------------
+# Configures /etc/netplan/99-static.yaml and applies it. The SSH session will
+# move to the new IP, so make sure `ansible_host` matches `network_static_ip`
+# (or update the inventory after the first run).
+- name: Configure static IP via Netplan
+  when: network_configure_static_ip | bool
   block:
-    - name: Check if reboot is needed
-      ansible.builtin.stat:
-        path: /var/run/reboot-required
-      register: reboot_file
+    - name: Find existing Netplan configs
+      ansible.builtin.find:
+        paths: /etc/netplan
+        patterns:
+          - "*.yaml"
+          - "*.yml"
+        excludes:
+          - "99-static.yaml"
+      register: common_netplan_existing
 
-    - name: Reboot if needed
-      ansible.builtin.reboot:
-        msg: "Rebooting after OS upgrade"
-        reboot_timeout: 300
-      when: reboot_file.stat.exists
+    - name: Remove existing Netplan DHCP configs
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ common_netplan_existing.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Deploy static Netplan configuration
+      ansible.builtin.template:
+        src: netplan-static.yaml.j2
+        dest: /etc/netplan/99-static.yaml
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Apply Netplan configuration (connection will briefly drop)
+      ansible.builtin.command: netplan apply
+      async: 10
+      poll: 0
+      changed_when: true
+
+    - name: Wait for server to be reachable at the new static IP
+      ansible.builtin.wait_for:
+        host: "{{ network_static_ip }}"
+        port: 22
+        delay: 5
+        timeout: 60
+      delegate_to: localhost
+      become: false
+
+# ---- Reboot if package upgrades require it -----------------
+- name: Check whether a reboot is required (kernel/libc updates)
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: common_reboot_required
+
+- name: Reboot the server because /var/run/reboot-required is set
+  ansible.builtin.reboot:
+    msg: "Reboot triggered by Ansible: kernel/libc update applied"
+    connect_timeout: 5
+    reboot_timeout: 600
+    pre_reboot_delay: 5
+    post_reboot_delay: 30
+    test_command: uptime
+  when:
+    - common_reboot_required.stat.exists
+    - auto_reboot_if_required | bool
+    - lookup('env', 'SEMAPHORE_TASK_ID') | length == 0
+
+- name: Reboot required but auto_reboot_if_required is false — warn the operator
+  ansible.builtin.debug:
+    msg: >
+      A reboot is required (/var/run/reboot-required exists) but
+      `auto_reboot_if_required` is false. Reboot the server manually with
+      `sudo reboot` to finalize kernel/libc updates.
+  when:
+    - common_reboot_required.stat.exists
+    - not (auto_reboot_if_required | bool)
+    - lookup('env', 'SEMAPHORE_TASK_ID') | length == 0
+
+# Semaphore runs as a Pod on this very host — rebooting kills the Pod that's
+# executing the playbook, so the task hangs forever. Skip the reboot and tell
+# the operator to do it manually after the run finishes.
+- name: Reboot required but Semaphore is running this task — warn instead of self-killing
+  ansible.builtin.debug:
+    msg: >
+      A reboot is required (/var/run/reboot-required exists) but this playbook
+      is running inside Semaphore (SEMAPHORE_TASK_ID is set). Auto-reboot is
+      skipped to avoid killing the executor Pod. Reboot manually after the run
+      finishes: `ssh jaydee@homeserver "sudo reboot"`.
+  when:
+    - common_reboot_required.stat.exists
+    - lookup('env', 'SEMAPHORE_TASK_ID') | length > 0

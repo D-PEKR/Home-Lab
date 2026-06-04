@@ -1,0 +1,121 @@
+---
+# ============================================================
+# semaphore_bootstrap — defaults
+# ============================================================
+# After `semaphore_secrets` has produced the bootstrap material and
+# ArgoCD has rolled out the Semaphore Pod, this role talks to the
+# Semaphore REST API and provisions Projects / Keys / Repositories /
+# Inventories / Templates so the UI is ready to use without manual
+# clicks.
+
+# Base URL Ansible uses to call the Semaphore REST API. The home-server
+# itself resolves `semaphore.homeserver` via dnsmasq → Traefik → Pod.
+# Override to e.g. `http://semaphore.semaphore.svc.cluster.local:3000`
+# if the dnsmasq path is not yet up when the role runs.
+semaphore_api_base: "http://semaphore.homeserver"
+
+# Kubernetes namespace where Semaphore runs (must match semaphore_secrets role).
+semaphore_namespace: semaphore
+
+# Where `semaphore_secrets` persisted the admin password.
+semaphore_admin_password_path: "/etc/semaphore-secrets/admin_password"
+semaphore_admin_username: admin
+
+# Path to the Semaphore-owned SSH private key on the home-server.
+semaphore_ssh_private_key_path: "/etc/semaphore-secrets/id_ed25519"
+
+# Readiness polling — start of the API may lag behind the rollout
+# because the initContainer must finish creating the admin user first.
+semaphore_api_ready_retries: 60   # 60 * 5s = 5 min
+semaphore_api_ready_delay: 5
+
+# Vault password Semaphore uses to decrypt ansible-vault secrets in triggered
+# playbooks. Must not be empty — the role fails early with a clear message if
+# it is. Set this in group_vars/all.yml (ansible-vault encrypted).
+semaphore_vault_password: ""
+
+# SSH login used by Semaphore when connecting to managed targets.
+# Must match ansible_user on all targets.
+semaphore_ssh_login: "jaydee"
+
+# Three access keys are created in every project — name them once here.
+# `login` is only relevant for the ssh-type entry.
+semaphore_default_keys:
+  - name: semaphore-ssh-key
+    type: ssh
+    login: "{{ semaphore_ssh_login }}"
+  - name: git-none
+    type: none
+  - name: vault-password
+    type: login_password
+
+# ============================================================
+# Desired state: list of projects to provision in Semaphore.
+# Override in group_vars/all.yml to add more projects without
+# editing the role.
+# ============================================================
+# Semaphore v2.18+ strips the Pod's container env when spawning ansible
+# tasks. ANSIBLE_VAULT_PASSWORD_FILE only reaches the playbook process if
+# injected via a per-template environment — without this, vault-encrypted
+# vars cannot be decrypted during a Semaphore-triggered run.
+semaphore_default_environment:
+  name: default-env
+  env:
+    ANSIBLE_VAULT_PASSWORD_FILE: /var/run/semaphore-secrets/ansible_vault_password
+
+semaphore_projects:
+  - name: home-server
+    description: "Deploy / re-provision the home-server itself."
+    repository:
+      name: home-server-git
+      url: "{{ argocd_repo_url }}"
+      branch: main
+    environments:
+      - "{{ semaphore_default_environment }}"
+    inventories:
+      - name: homeservers
+        type: static
+        ssh_key: semaphore-ssh-key
+        content: |
+          [homeservers]
+          homeserver ansible_host=192.168.178.127
+    templates:
+      - name: "Deploy Home Server"
+        playbook: ansible/site.yml
+        inventory: homeservers
+        environment: default-env
+        vault_key: vault-password
+        description: "Run the full site.yml against the home-server (recursive)."
+    schedules:
+      - name: "Daily 06:00"
+        template: "Deploy Home Server"
+        cron: "0 6 * * *"
+        active: true
+
+  - name: homeserver2
+    description: "Deploy Docker-Compose-Dienste auf homeserver2 (192.168.178.95)."
+    repository:
+      name: home-server-git
+      url: "{{ argocd_repo_url }}"
+      branch: main
+    environments:
+      - "{{ semaphore_default_environment }}"
+    inventories:
+      - name: second_servers
+        type: static
+        ssh_key: semaphore-ssh-key
+        content: |
+          [second_servers]
+          homeserver2 ansible_host=192.168.178.95
+    templates:
+      - name: "Deploy homeserver2"
+        playbook: ansible/homeserver2.yml
+        inventory: second_servers
+        environment: default-env
+        vault_key: vault-password
+        description: "Paperless-NGX, TinyTeller, Day Pilot, Node Exporter auf homeserver2."
+    schedules:
+      - name: "Daily 06:00"
+        template: "Deploy homeserver2"
+        cron: "0 6 * * *"
+        active: true

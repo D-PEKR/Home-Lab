@@ -1,0 +1,17 @@
+---
+# Managed by Ansible — do not edit manually.
+network:
+  version: 2
+  ethernets:
+    {{ network_interface }}:
+      dhcp4: false
+      addresses:
+        - {{ network_static_ip }}/{{ network_prefix_length }}
+      routes:
+        - to: default
+          via: {{ network_gateway }}
+      nameservers:
+        addresses:
+{% for dns in network_dns %}
+          - {{ dns }}
+{% endfor %}

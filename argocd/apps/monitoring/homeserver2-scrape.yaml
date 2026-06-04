@@ -1,0 +1,28 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMStaticScrape
+metadata:
+  name: homeserver2-node-exporter
+  namespace: monitoring
+spec:
+  jobName: homeserver2-node-exporter
+  targetEndpoints:
+    - targets:
+        - "homeserver2:9100"
+      labels:
+        job: node-exporter
+        instance: homeserver2
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMStaticScrape
+metadata:
+  name: homeserver2-cadvisor
+  namespace: monitoring
+spec:
+  jobName: homeserver2-cadvisor
+  targetEndpoints:
+    - targets:
+        - "homeserver2:18080"
+      labels:
+        job: cadvisor
+        instance: homeserver2

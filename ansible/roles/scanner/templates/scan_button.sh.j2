@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# ANSIBLE MANAGED — scanner role
+# Triggered by scanbd when the hardware scan button is pressed.
+# Sets a trigger flag; scanner-trigger.path/service handles the actual scan
+# outside of scanbd's process tree so the USB interface can be released.
+
+set -euo pipefail
+
+TRIGGER_FLAG="{{ scanner_trigger_flag }}"
+
+logger -t scanbd-scan -p user.info "scan_button: button pressed — setting trigger flag"
+touch "${TRIGGER_FLAG}"

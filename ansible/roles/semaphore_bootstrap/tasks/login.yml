@@ -1,0 +1,52 @@
+---
+# ============================================================
+# Login to Semaphore and capture the session cookie. Subsequent
+# requests pass it back in the `Cookie:` header.
+# ============================================================
+
+- name: Read admin password from disk
+  ansible.builtin.slurp:
+    src: "{{ semaphore_admin_password_path }}"
+  register: semaphore_admin_pw_slurp
+  no_log: true
+
+- name: Set admin password fact
+  ansible.builtin.set_fact:
+    semaphore_admin_password: "{{ semaphore_admin_pw_slurp.content | b64decode | trim }}"
+  no_log: true
+
+- name: Login to Semaphore
+  ansible.builtin.uri:
+    url: "{{ semaphore_api_base }}/api/auth/login"
+    method: POST
+    body_format: json
+    body:
+      auth: "{{ semaphore_admin_username }}"
+      password: "{{ semaphore_admin_password }}"
+    status_code: [200, 204]
+    return_content: false
+  register: semaphore_login
+  no_log: true
+
+- name: Fail if Semaphore rejected the admin credentials
+  ansible.builtin.fail:
+    msg: >
+      Semaphore returned status {{ semaphore_login.status }} on login.
+      The password in {{ semaphore_admin_password_path }} no longer matches
+      Semaphore's DB (rotated in the UI?) or the Pod isn't fully up. Reset
+      the admin user inside the Pod or wipe the PVC and re-run.
+  when: semaphore_login.status not in [200, 204]
+
+- name: Capture session cookie
+  ansible.builtin.set_fact:
+    semaphore_cookie: "{{ semaphore_login.cookies_string }}"
+  no_log: true
+
+# YAML double-quoted "\n" decodes to a real newline char. Folded-scalar bodies
+# (>-) downstream see this fact as one newline char instead of the literal
+# 2-char string `\n` they'd get from `'\n'` written inline. Without this,
+# Semaphore stored PEM keys ending in a literal `\n` and rejected them with
+# "ssh: no key found".
+- name: Set newline-char fact for PEM body construction
+  ansible.builtin.set_fact:
+    semaphore_pem_newline: "\n"

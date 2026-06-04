@@ -1,49 +1,100 @@
-INVENTORY := ansible/inventory/hosts.yml
-PLAYBOOK  := ansible/site.yml
+# Convenience targets for the home-server playbook.
+# Run `make help` to see what's available.
 
-.PHONY: install check ping deps lint cluster-info argocd-password vault-encrypt
+ANSIBLE_DIR := ansible
+INVENTORY   := $(ANSIBLE_DIR)/inventory/hosts.yml
+PLAYBOOK    := $(ANSIBLE_DIR)/site.yml
+VAULT_OPTS  ?= --ask-vault-pass
+HS2_PLAYBOOK := $(ANSIBLE_DIR)/homeserver2.yml
 
-## Vollständige Installation
-install: deps
-	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --ask-vault-pass
+.DEFAULT_GOAL := help
 
-## Dry-Run
-check: deps
-	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --ask-vault-pass --check
+.PHONY: help
+help: ## Show this help.
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-## Nur Common + Storage im Check-Mode (zuverlässiger als voller Check)
-check-base: deps
-	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --ask-vault-pass --check --tags common,storage
+.PHONY: deps
+deps: ## Install required Ansible Galaxy collections.
+	ansible-galaxy collection install -r $(ANSIBLE_DIR)/requirements.yml
 
-## Connectivity-Test
-ping:
-	ansible -i $(INVENTORY) k3s_cluster -m ping
+.PHONY: ping
+ping: ## Verify Ansible can reach the server.
+	ansible -i $(INVENTORY) homeserver -m ping
 
-## Galaxy-Collections installieren
-deps:
-	ansible-galaxy collection install -r ansible/requirements.yml
+.PHONY: check
+check: ## Dry-run the full playbook (no changes applied).
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --check --diff $(VAULT_OPTS)
 
-## Lint
-lint:
-	ansible-lint ansible/
+.PHONY: install
+install: deps ## Provision the home server end-to-end.
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) $(VAULT_OPTS)
 
-## Cluster-Status
-cluster-info:
-	kubectl get nodes -o wide
-	kubectl get pods --all-namespaces | grep -v Running | grep -v Completed || true
-	kubectl -n argocd get applications
+.PHONY: common dnsmasq tailscale k3s argocd scanner semaphore semaphore-targets semaphore-bootstrap semaphore-bootstrap-local homeserver2 homeserver2-check
+common: ## Run only the `common` role (base OS, firewall, packages).
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --tags common $(VAULT_OPTS)
 
-## ArgoCD Passwort
-argocd-password:
-	kubectl -n argocd get secret argocd-initial-admin-secret \
-	  -o jsonpath='{.data.password}' | base64 -d; echo
+dnsmasq: ## Run only the `dnsmasq` role (split-DNS for *.homeserver).
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --tags dnsmasq $(VAULT_OPTS)
 
-## Vault Secret erstellen
-vault-encrypt:
-	@read -p "Variable name: " NAME; \
-	 read -s -p "Value: " VAL; echo; \
-	 ansible-vault encrypt_string "$$VAL" --name "$$NAME"
+tailscale: ## Run only the `tailscale` role (VPN).
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --tags tailscale $(VAULT_OPTS)
 
-## k3s Token generieren und verschlüsseln
-vault-k3s-token:
-	ansible-vault encrypt_string "$$(openssl rand -hex 32)" --name 'k3s_token'
+k3s: ## Run only the `k3s` role (Kubernetes + Helm).
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --tags k3s $(VAULT_OPTS)
+
+argocd: ## Run only the `argocd` role (GitOps controller).
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --tags argocd $(VAULT_OPTS)
+
+scanner: ## Run only the `scanner` role (Fujitsu + scanbd + SMB mount).
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --tags scanner $(VAULT_OPTS)
+
+semaphore: ## Bootstrap Semaphore Secret on the home-server.
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --tags semaphore-secrets $(VAULT_OPTS)
+
+semaphore-targets: ## Push Semaphore SSH key to all managed targets.
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --tags semaphore-targets $(VAULT_OPTS)
+
+semaphore-bootstrap: ## Provision Projects/Inventories/Templates in Semaphore via API.
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --tags semaphore-bootstrap $(VAULT_OPTS)
+
+semaphore-bootstrap-local: ## Bootstrap Semaphore natively on the home server (no SSH).
+	ansible-playbook -i $(INVENTORY) $(PLAYBOOK) \
+	    --connection local \
+	    --extra-vars "ansible_host=127.0.0.1 ansible_user=$$(whoami)" \
+	    --tags semaphore-bootstrap $(VAULT_OPTS)
+
+homeserver2: ## Deploy all services on homeserver2 (192.168.178.95).
+	ansible-playbook -i $(INVENTORY) $(HS2_PLAYBOOK) $(VAULT_OPTS)
+
+homeserver2-check: ## Dry-run the homeserver2 playbook (no changes applied).
+	ansible-playbook -i $(INVENTORY) $(HS2_PLAYBOOK) --check --diff $(VAULT_OPTS)
+
+.PHONY: lint
+lint: ## Lint YAML, Ansible, and ALL Helm charts.
+	yamllint -c .yamllint ansible/ argocd/
+	ansible-lint $(ANSIBLE_DIR)/
+	@if command -v helm >/dev/null; then \
+	    for chart in argocd/apps/*/; do \
+	        [ -f "$${chart}Chart.yaml" ] || continue; \
+	        if grep -q '^dependencies:' "$${chart}Chart.yaml"; then \
+	            echo "==> helm dependency build $${chart}"; \
+	            helm dependency build "$${chart}" || helm dependency update "$${chart}"; \
+	        fi; \
+	        echo "==> helm lint $${chart}"; \
+	        helm lint "$${chart}"; \
+	    done; \
+	else \
+	    echo "helm not installed — skipping chart lint"; \
+	fi
+
+.PHONY: render-bootstrap
+render-bootstrap: ## Regenerate argocd/bootstrap/root-applicationset.yaml from the role template.
+	ansible-playbook $(ANSIBLE_DIR)/render-bootstrap.yml --connection local $(VAULT_OPTS)
+
+.PHONY: vault-edit
+vault-edit: ## Edit the vault-encrypted vars file.
+	ansible-vault edit $(ANSIBLE_DIR)/group_vars/all.yml
+
+.PHONY: clean
+clean: ## Remove cached collections and temp artifacts.
+	rm -rf ~/.ansible/collections/ansible_collections/{ansible,community,kubernetes}
