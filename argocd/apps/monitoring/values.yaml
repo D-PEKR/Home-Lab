@@ -151,7 +151,7 @@ victoria-metrics-k8s-stack:
       - victoriametrics-metrics-datasource
 
     admin:
-      existingSecret: ""        # leave empty → auto-generated password
+      existingSecret: "grafana-admin"        # leave empty → auto-generated password
 
     securityContext:
       runAsNonRoot: true
