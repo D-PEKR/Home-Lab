@@ -1,10 +1,9 @@
 name: Pascal Auto Fix
 
 on:
-  push:
-    branches:
-      - pascal_autofix
-  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"   # täglich um 03:00
+  workflow_dispatch:       # manuell startbar
 
 jobs:
   autofix:
@@ -14,12 +13,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install GitHub CLI
-        uses: actions/setup-gh@v4
-
-      - name: Authenticate GitHub CLI
-        run: gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
-
       - name: Generate Patch with Pascal
         id: pascal
         run: |
@@ -27,7 +20,7 @@ jobs:
             -H "x-api-key: ${{ secrets.CLAUDE_API_KEY }}" \
             -H "content-type: application/json" \
             -d '{
-              "model": "claude-3-7-sonnet",
+              "model": "claude-sonnet-4-6",
               "max_tokens": 4096,
               "messages": [
                 {
@@ -48,12 +41,17 @@ jobs:
             git apply patch.diff || echo "Patch konnte nicht angewendet werden"
           fi
 
-      - name: Commit changes
+      - name: Commit and push changes
         run: |
           git config user.name "Pascal Wargenknecht"
           git config user.email "info@edv-kretzer.de"
+          git checkout -b pascal-autofix-branch
           git add .
-          git commit -m "Automated fix by Claude" || echo "Keine Änderungen"
+          git diff --cached --quiet && echo "Keine Änderungen" && exit 0
+          git commit -m "Automated fix by Claude"
+          git push origin pascal-autofix-branch --force-with-lease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Pull Request
         run: |
@@ -61,6 +59,6 @@ jobs:
             --title "Automated Fix by Pascal" \
             --body "Dieser PR wurde automatisch generiert." \
             --base main \
-            --head pascal_autofix || echo "PR existiert bereits"
+            --head pascal-autofix-branch || echo "PR existiert bereits"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
