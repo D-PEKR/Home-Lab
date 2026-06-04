@@ -33,8 +33,8 @@ Auf **jedem** Server einmalig ausführen:
 
 ```bash
 # SSH-Zugang sicherstellen
-ssh-copy-id jaydee@192.168.178.94
-ssh-copy-id jaydee@192.168.178.95
+ssh-copy-id ubuntu@192.168.178.94
+ssh-copy-id ubuntu@192.168.178.95
 
 # SSH-Verbindung testen
 ansible -i ansible/inventory/hosts.yml all -m ping
@@ -45,8 +45,8 @@ ansible -i ansible/inventory/hosts.yml all -m ping
 ## Schritt 1 — Repo klonen & Abhängigkeiten installieren
 
 ```bash
-git clone https://github.com/Jaydee94/home-server.git
-cd home-server
+git clone https://github.com/D-PEKR/Home-Lab
+cd Home-Lab
 make deps
 ```
 
@@ -131,7 +131,7 @@ Nach dem Durchlauf ist ArgoCD aktiv und synct `argocd/apps/` automatisch.
 
 ```bash
 # Admin-Passwort abrufen
-ssh jaydee@192.168.178.94 \
+ssh ubuntu@192.168.178.94 \
   'sudo kubectl -n argocd get secret argocd-initial-admin-secret \
    -o jsonpath="{.data.password}" | base64 -d; echo'
 ```
@@ -196,7 +196,7 @@ Nach dem ArgoCD-Sync (ca. 3 Minuten nach Push):
 
 ```bash
 # Grafana Admin-Passwort
-ssh jaydee@192.168.178.94 \
+ssh ubuntu@192.168.178.94 \
   'sudo kubectl -n monitoring get secret monitoring-grafana \
    -o jsonpath="{.data.admin-password}" | base64 -d; echo'
 ```
@@ -271,17 +271,17 @@ k3s_version: "v1.30.2+k3s1"  # leer = immer latest stable
 ```bash
 make ping
 # Falls timeout: SSH-Key prüfen, Firewall, VPN
-ssh -v jaydee@192.168.178.95
+ssh -v ubuntu@192.168.178.95
 ```
 
 ### ArgoCD-App out-of-sync
 
 ```bash
-ssh jaydee@192.168.178.94 \
+ssh ubuntu@192.168.178.94 \
   'sudo kubectl -n argocd get applications'
 
 # Manuell sync auslösen
-ssh jaydee@192.168.178.94 \
+ssh ubuntu@192.168.178.94 \
   'sudo kubectl -n argocd patch application my-app \
    -p "{\"operation\":{\"sync\":{}}}" --type merge'
 ```
@@ -289,7 +289,7 @@ ssh jaydee@192.168.178.94 \
 ### Paperless-Container neu starten (homeserver2)
 
 ```bash
-ssh jaydee@192.168.178.95
+ssh ubuntu@192.168.178.95
 cd /opt/paperless
 sudo docker compose restart
 sudo docker compose logs -f paperless-webserver
@@ -306,7 +306,7 @@ make semaphore-bootstrap
 ### Scanner-SMB-Mount ausgefallen
 
 ```bash
-ssh jaydee@192.168.178.94
+ssh ubuntu@192.168.178.94
 sudo systemctl status mnt-paperless\\x2dconsume.mount
 sudo mount -a
 # Wenn homeserver2 nicht erreichbar: zuerst homeserver2 starten
@@ -316,13 +316,13 @@ sudo mount -a
 
 ```bash
 # PVC-Pfad finden
-ssh jaydee@192.168.178.94 \
+ssh ubuntu@192.168.178.94 \
   'sudo ls /var/lib/rancher/k3s/storage/ | grep grafana'
 
 # Datenbank löschen und Deployment neu starten
-ssh jaydee@192.168.178.94 \
+ssh ubuntu@192.168.178.94 \
   'sudo rm /var/lib/rancher/k3s/storage/<pvc-name>/grafana.db'
-ssh jaydee@192.168.178.94 \
+ssh ubuntu@192.168.178.94 \
   'sudo kubectl -n monitoring rollout restart deployment/monitoring-grafana'
 ```
 
