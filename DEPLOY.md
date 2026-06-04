@@ -8,7 +8,7 @@ Vollständige Anleitung zur Erstinstallation und Verwaltung der Home-Lab-Infrast
 
 | Maschine        | IP               | Rolle                                          |
 |-----------------|------------------|------------------------------------------------|
-| `homeserver`    | 192.168.178.127  | k3s + ArgoCD + Semaphore (Kubernetes-Stack)    |
+| `homeserver`    | 192.168.178.94  | k3s + ArgoCD + Semaphore (Kubernetes-Stack)    |
 | `homeserver2`   | 192.168.178.95   | Docker Compose (Paperless, TinyTeller, etc.)   |
 
 ---
@@ -33,7 +33,7 @@ Auf **jedem** Server einmalig ausführen:
 
 ```bash
 # SSH-Zugang sicherstellen
-ssh-copy-id jaydee@192.168.178.127
+ssh-copy-id jaydee@192.168.178.94
 ssh-copy-id jaydee@192.168.178.95
 
 # SSH-Verbindung testen
@@ -131,12 +131,12 @@ Nach dem Durchlauf ist ArgoCD aktiv und synct `argocd/apps/` automatisch.
 
 ```bash
 # Admin-Passwort abrufen
-ssh jaydee@192.168.178.127 \
+ssh jaydee@192.168.178.94 \
   'sudo kubectl -n argocd get secret argocd-initial-admin-secret \
    -o jsonpath="{.data.password}" | base64 -d; echo'
 ```
 
-ArgoCD UI: **http://192.168.178.127:30080** (Benutzer: `admin`)
+ArgoCD UI: **http://192.168.178.94:30080** (Benutzer: `admin`)
 
 ---
 
@@ -183,7 +183,7 @@ Folgende Projekte werden automatisch angelegt:
 
 | Projekt | Playbook | Inventory |
 |---|---|---|
-| `home-server` | `ansible/site.yml` | homeserver (192.168.178.127) |
+| `home-server` | `ansible/site.yml` | homeserver (192.168.178.94) |
 | `homeserver2` | `ansible/homeserver2.yml` | homeserver2 (192.168.178.95) |
 
 Beide laufen täglich um 06:00 Uhr automatisch durch.
@@ -196,7 +196,7 @@ Nach dem ArgoCD-Sync (ca. 3 Minuten nach Push):
 
 ```bash
 # Grafana Admin-Passwort
-ssh jaydee@192.168.178.127 \
+ssh jaydee@192.168.178.94 \
   'sudo kubectl -n monitoring get secret monitoring-grafana \
    -o jsonpath="{.data.admin-password}" | base64 -d; echo'
 ```
@@ -214,7 +214,7 @@ Das Monitoring scrapt automatisch:
 
 | Service | URL | Authentifizierung |
 |---|---|---|
-| ArgoCD | http://192.168.178.127:30080 | admin / siehe Step 3 |
+| ArgoCD | http://192.168.178.94:30080 | admin / siehe Step 3 |
 | Grafana | http://grafana.homeserver | admin / auto-generiert |
 | Headlamp | http://headlamp.homeserver | Token-basiert |
 | Semaphore | http://semaphore.homeserver | admin / aus Vault |
@@ -277,11 +277,11 @@ ssh -v jaydee@192.168.178.95
 ### ArgoCD-App out-of-sync
 
 ```bash
-ssh jaydee@192.168.178.127 \
+ssh jaydee@192.168.178.94 \
   'sudo kubectl -n argocd get applications'
 
 # Manuell sync auslösen
-ssh jaydee@192.168.178.127 \
+ssh jaydee@192.168.178.94 \
   'sudo kubectl -n argocd patch application my-app \
    -p "{\"operation\":{\"sync\":{}}}" --type merge'
 ```
@@ -306,7 +306,7 @@ make semaphore-bootstrap
 ### Scanner-SMB-Mount ausgefallen
 
 ```bash
-ssh jaydee@192.168.178.127
+ssh jaydee@192.168.178.94
 sudo systemctl status mnt-paperless\\x2dconsume.mount
 sudo mount -a
 # Wenn homeserver2 nicht erreichbar: zuerst homeserver2 starten
@@ -316,13 +316,13 @@ sudo mount -a
 
 ```bash
 # PVC-Pfad finden
-ssh jaydee@192.168.178.127 \
+ssh jaydee@192.168.178.94 \
   'sudo ls /var/lib/rancher/k3s/storage/ | grep grafana'
 
 # Datenbank löschen und Deployment neu starten
-ssh jaydee@192.168.178.127 \
+ssh jaydee@192.168.178.94 \
   'sudo rm /var/lib/rancher/k3s/storage/<pvc-name>/grafana.db'
-ssh jaydee@192.168.178.127 \
+ssh jaydee@192.168.178.94 \
   'sudo kubectl -n monitoring rollout restart deployment/monitoring-grafana'
 ```
 

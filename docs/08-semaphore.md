@@ -48,12 +48,12 @@ dass deine Tailscale-Clients den Home-Server als Nameserver für die
 Test (vom Tailscale-Client):
 ```bash
 nslookup semaphore.homeserver
-# Expected: 192.168.178.127  (von dnsmasq aufgelöst)
+# Expected: 192.168.178.94  (von dnsmasq aufgelöst)
 ```
 
 Falls die Auflösung nicht klappt: prüfe auf dem Server
 `sudo ss -lntu | grep :53` — dnsmasq sollte sowohl auf
-`192.168.178.127:53` als auch auf `100.x.y.z:53` (tailscale0) lauschen.
+`192.168.178.94:53` als auch auf `100.x.y.z:53` (tailscale0) lauschen.
 
 ## Architektur in zehn Sekunden
 
@@ -155,7 +155,7 @@ nichts mehr klicken außer ▶ **Run**.
 
 | Project              | Repository                                                | Inventory   | Template                  | Playbook                  | Schedule       |
 |----------------------|-----------------------------------------------------------|-------------|---------------------------|---------------------------|----------------|
-| `home-server`        | dieses Repo (`argocd_repo_url` aus `group_vars/all.yml`)  | `homeservers` (192.168.178.127) | `Deploy Home Server`      | `ansible/site.yml`        | täglich 06:00  |
+| `home-server`        | dieses Repo (`argocd_repo_url` aus `group_vars/all.yml`)  | `homeservers` (192.168.178.94) | `Deploy Home Server`      | `ansible/site.yml`        | täglich 06:00  |
 | `ugreen-nas`         | dieses Repo (`argocd_repo_url` aus `group_vars/all.yml`)  | `ugreen_nas` (192.168.178.118)  | `Deploy UGREEN NAS`       | `ansible/ugreen-nas.yml`  | —              |
 
 ### Workflow

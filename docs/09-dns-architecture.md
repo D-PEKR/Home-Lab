@@ -25,7 +25,7 @@ behandelst du `*.homeserver` als *opt-in*-Komfort pro Gerät.
             ┌──────────────────────────────────────┐
             │  Jedes LAN-Gerät: Smart-TV,         │
             │  IoT-Steckdose, Drucker, Telefon... │
-            │  Alle fragen NUR 192.168.178.127    │
+            │  Alle fragen NUR 192.168.178.94    │
             └──────────────────────────────────────┘
                             │
                 Home-Server crashed
@@ -113,7 +113,7 @@ Wenn ein bestimmtes Gerät kein Tailscale haben soll (z.B. ein
 Familien-Tablet), trägst du dort manuell zwei DNS-Server in den
 WLAN-Einstellungen ein:
 
-- **Primär**: `192.168.178.127` (Home-Server / dnsmasq)
+- **Primär**: `192.168.178.94` (Home-Server / dnsmasq)
 - **Sekundär**: `192.168.178.1` (Fritz!Box)
 
 Verhalten:
@@ -128,7 +128,7 @@ Verhalten:
 - Windows: *Netzwerk- und Internet-Einstellungen → WLAN →
   Hardwareeigenschaften → DNS-Server-Zuweisung → Bearbeiten*
 - Linux (NetworkManager): `nmcli con modify <verbindung> ipv4.dns
-  "192.168.178.127 192.168.178.1"` + `ipv4.ignore-auto-dns yes`
+  "192.168.178.94 192.168.178.1"` + `ipv4.ignore-auto-dns yes`
 - iOS: *Einstellungen → WLAN → Netzwerk → DNS konfigurieren →
   Manuell*
 - Android: *WLAN-Einstellungen → Erweitert → IP-Einstellungen →
@@ -139,7 +139,7 @@ Verhalten:
 Für einzelne, langlebige Hostnamen — wenn du es ganz statisch willst:
 
 ```
-192.168.178.127  semaphore.homeserver argocd.homeserver headlamp.homeserver
+192.168.178.94  semaphore.homeserver argocd.homeserver headlamp.homeserver
 ```
 
 Vorteil: funktioniert auch wenn der dnsmasq down ist (das ist halt
@@ -154,7 +154,7 @@ Service ergänzen.
 Der Home-Server hat zwei DNS-Einträge in seiner `/etc/resolv.conf`:
 
 ```
-nameserver 192.168.178.127   # dnsmasq (sich selbst)
+nameserver 192.168.178.94   # dnsmasq (sich selbst)
 nameserver 192.168.178.1     # Fritz!Box (Fallback)
 ```
 
@@ -171,7 +171,7 @@ Fritz!Box → Heimnetz → Netzwerk → Netzwerkeinstellungen →
 "Lokaler DNS-Server"
 ```
 
-**Lass das Feld leer.** Wenn du dort `192.168.178.127` einträgst,
+**Lass das Feld leer.** Wenn du dort `192.168.178.94` einträgst,
 verteilt die Fritz!Box den Home-Server als einzigen DNS-Server an alle
 LAN-Geräte per DHCP — genau das Single-Point-of-Failure-Szenario, das
 wir vermeiden wollen.
@@ -190,7 +190,7 @@ Brauche ich *.homeserver auf diesem Gerät?
       ├── Ja → Tailscale Split DNS aktivieren (1× im Tailscale-Admin)
       │
       └── Nein → DNS-Server am Gerät manuell auf
-                 192.168.178.127 + 192.168.178.1 setzen
+                 192.168.178.94 + 192.168.178.1 setzen
 ```
 
 [avm-dns]: https://en.fritz.com/service/knowledge-base/dok/FRITZ-Box-7590/165_Configuring-different-DNS-servers-in-the-FRITZ-Box/

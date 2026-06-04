@@ -55,7 +55,7 @@ ansible/
 all:
   hosts:
     home-server:
-      ansible_host: 192.168.178.127
+      ansible_host: 192.168.178.94
       ansible_user: jaydee
     ugreen-nas:
       ansible_host: jays-ugreen

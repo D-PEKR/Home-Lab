@@ -42,7 +42,7 @@ argocd_version: ""
 argocd_namespace: argocd
 argocd_server_insecure: true
 # Git repo ArgoCD pulls from. Must be reachable by argocd-repo-server pod.
-argocd_repo_url: "https://github.com/Jaydee94/home-server.git"   # CHANGE if you forked
+argocd_repo_url: "https://github.com/D-PEKR/Home-Lab"
 # Branch/tag/SHA ArgoCD tracks. Pinned to `main` (the GitOps branch) instead of
 # the ambiguous `HEAD` for reproducible bootstraps; set a tag or SHA to freeze.
 argocd_repo_revision: main
@@ -110,7 +110,7 @@ semaphore_projects:
         ssh_key: semaphore-ssh-key
         content: |
           [homeservers]
-          homeserver ansible_host=192.168.178.127
+          homeserver ansible_host=192.168.178.94
     templates:
       - name: "Deploy Home Server"
         playbook: ansible/site.yml
@@ -207,7 +207,7 @@ scanner_gotify_token: !vault |
 # (or update it after the first run).
 network_configure_static_ip: false
 network_interface: "eno1"              # CHANGE: run `ip link show` on the server
-network_static_ip: "192.168.178.127"
+network_static_ip: "192.168.178.94"
 network_prefix_length: 24              # 24 = /24 = 255.255.255.0
 network_gateway: "192.168.178.1"
 network_dns:

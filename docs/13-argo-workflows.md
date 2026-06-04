@@ -88,7 +88,7 @@ the MinIO + Argo pods start.
 ## 2. Verify
 
 ```bash
-SSH="ssh -i ~/.ssh/id_ed25519 jaydee@192.168.178.127"
+SSH="ssh -i ~/.ssh/id_ed25519 jaydee@192.168.178.94"
 $SSH 'sudo kubectl -n argocd get application minio argo-workflows'
 $SSH 'sudo kubectl -n minio get pods'
 $SSH 'sudo kubectl -n argo-workflows get pods'

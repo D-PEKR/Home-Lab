@@ -73,7 +73,7 @@ all:
     homeservers:
       hosts:
         homeserver:
-          ansible_host: 192.168.178.127
+          ansible_host: 192.168.178.94
           ansible_user: jaydee
     ugreen_nas:
       hosts:

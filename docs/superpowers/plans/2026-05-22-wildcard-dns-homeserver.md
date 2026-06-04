@@ -125,24 +125,24 @@
 - [ ] **Schritt 2: Wildcard-Auflösung prüfen (bekannte Hosts)**
 
   ```bash
-  dig grafana.homeserver @192.168.178.127 +short
-  dig gotify.homeserver @192.168.178.127 +short
+  dig grafana.homeserver @192.168.178.94 +short
+  dig gotify.homeserver @192.168.178.94 +short
   ```
-  Erwartete Ausgabe jeweils: `192.168.178.127`
+  Erwartete Ausgabe jeweils: `192.168.178.94`
 
 - [ ] **Schritt 3: Wildcard-Auflösung prüfen (neuer fiktiver Host)**
 
   ```bash
-  dig neuapp.homeserver @192.168.178.127 +short
+  dig neuapp.homeserver @192.168.178.94 +short
   ```
-  Erwartete Ausgabe: `192.168.178.127` — der Wildcard greift auch für nicht existierende Services.
+  Erwartete Ausgabe: `192.168.178.94` — der Wildcard greift auch für nicht existierende Services.
 
 - [ ] **Schritt 4: Tailnet-Auflösung prüfen (optional, falls Tailscale aktiv)**
 
   ```bash
   dig grafana.homeserver @100.x.y.z +short   # 100.x.y.z = Tailscale-IP des Home-Servers
   ```
-  Erwartete Ausgabe: `192.168.178.127`
+  Erwartete Ausgabe: `192.168.178.94`
 
 - [ ] **Schritt 5: Push**
 
