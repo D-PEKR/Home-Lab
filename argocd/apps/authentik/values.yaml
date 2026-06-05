@@ -28,23 +28,18 @@ credentials:
 
 authentik:
   # ---- Kern-Konfiguration ---------------------------------
-  # secret_key kommt aus dem SealedSecret über global.env
   authentik:
     error_reporting:
       enabled: false
-    disable_update_check: true
-    disable_startup_analytics: true
     avatars: "none"
     log_level: info
     postgresql:
       host: "{{ .Release.Name }}-postgresql"
       name: authentik
       user: authentik
-      # password kommt aus global.env
+      # password kommt aus global.env (AUTHENTIK_POSTGRESQL__PASSWORD)
 
-  # ---- Bootstrap (erster Admin-Account) -------------------
-  # Beim ersten Start legt Authentik automatisch einen Admin-User an,
-  # sofern AUTHENTIK_BOOTSTRAP_EMAIL und AUTHENTIK_BOOTSTRAP_PASSWORD gesetzt sind.
+  # ---- Secrets (AUTHENTIK_BOOTSTRAP_* nur beim ersten Start) ----
   global:
     env:
       - name: AUTHENTIK_SECRET_KEY
@@ -83,18 +78,17 @@ authentik:
       annotations:
         traefik.ingress.kubernetes.io/router.entrypoints: web
       hosts:
-        - host: authentik.homeserver
-          paths:
-            - path: /
-              pathType: Prefix
+        - authentik.homeserver
+      paths:
+        - "/"
+      pathType: Prefix
       tls: []
 
-    # Metrics für VictoriaMetrics/Prometheus-Scraping
     metrics:
       serviceMonitor:
         create: false
 
-  # ---- Worker (Background-Tasks, z.B. Policy-Eval) --------
+  # ---- Worker (Background-Tasks) --------------------------
   worker:
     resources:
       requests:
@@ -103,8 +97,8 @@ authentik:
       limits:
         memory: 256Mi
 
-  # ---- Eingebettete PostgreSQL (Bitnami) ------------------
-  # Für Home-Lab ausreichend; für Prod: externen PostgreSQL nutzen.
+  # ---- PostgreSQL (eingebettet) ---------------------------
+  # Chart 2026.x nutzt library/postgres:17-bookworm statt des alten Bitnami-Images.
   postgresql:
     enabled: true
     auth:
@@ -118,6 +112,7 @@ authentik:
         enabled: true
         storageClass: local-path
         size: 4Gi
+      resourcesPreset: "none"
       resources:
         requests:
           cpu: 50m
@@ -125,19 +120,4 @@ authentik:
         limits:
           memory: 256Mi
 
-  # ---- Eingebettetes Redis (Bitnami) ----------------------
-  redis:
-    enabled: true
-    auth:
-      enabled: false
-    master:
-      persistence:
-        enabled: true
-        storageClass: local-path
-        size: 1Gi
-      resources:
-        requests:
-          cpu: 25m
-          memory: 64Mi
-        limits:
-          memory: 128Mi
+  # Redis ist ab Chart 2026.x kein eigenständiger Dienst mehr.

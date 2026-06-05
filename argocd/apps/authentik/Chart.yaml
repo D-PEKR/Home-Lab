@@ -12,7 +12,7 @@ description: |
     Gotify, Semaphore
 type: application
 version: 0.1.0
-appVersion: "2024.12"
+appVersion: "2026.5"
 keywords:
   - authentik
   - sso
@@ -28,4 +28,4 @@ maintainers:
 dependencies:
   - name: authentik
     repository: https://charts.goauthentik.io
-    version: "2024.12.*"
+    version: "2026.5.*"
