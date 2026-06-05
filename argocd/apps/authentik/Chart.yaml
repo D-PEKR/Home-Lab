@@ -1,0 +1,31 @@
+---
+apiVersion: v2
+name: authentik
+description: |
+  Authentik — Open-Source Identity Provider für Single Sign-On (SSO).
+  Stellt OIDC/OAuth2 für alle Home-Lab-Dienste bereit und übernimmt
+  Forward Auth für Services ohne native OIDC-Unterstützung.
+
+  Integrierte Dienste (OIDC):
+    Grafana, ArgoCD, Headlamp, Argo Workflows, MinIO
+  Forward Auth via Traefik-Middleware:
+    Gotify, Semaphore
+type: application
+version: 0.1.0
+appVersion: "2024.12"
+keywords:
+  - authentik
+  - sso
+  - oidc
+  - oauth2
+  - identity-provider
+  - forward-auth
+home: https://goauthentik.io
+sources:
+  - https://github.com/goauthentik/authentik
+maintainers:
+  - name: home-server-admin
+dependencies:
+  - name: authentik
+    repository: https://charts.goauthentik.io
+    version: "2024.12.*"

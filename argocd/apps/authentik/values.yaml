@@ -1,0 +1,142 @@
+---
+# ============================================================
+# Authentik SSO — wrapper values
+#
+# Credentials-Block (SealedSecret):
+#   Werte mit kubeseal versiegeln und hier eintragen.
+#   Anleitung: docs/14-sso-authentik.md → Abschnitt "Secrets versiegeln"
+# ============================================================
+
+credentials:
+  enabled: true
+  secretName: authentik-credentials
+  # Versiegelte Ciphertext-Werte — NIEMALS Klartext committen!
+  # Versiegeln: echo -n 'WERT' | kubeseal --raw --namespace authentik \
+  #             --name authentik-credentials --controller-namespace sealed-secrets
+  encryptedSecretKey: "REPLACE_WITH_SEALED_VALUE"
+  encryptedDbPassword: "REPLACE_WITH_SEALED_VALUE"
+  encryptedBootstrapPassword: "REPLACE_WITH_SEALED_VALUE"
+  encryptedBootstrapEmail: "REPLACE_WITH_SEALED_VALUE"
+
+# ============================================================
+# Sub-Chart: goauthentik.io/authentik
+# Alle Keys unterhalb von `authentik:` landen beim upstream-Chart.
+# Upstream values.yaml:
+#   https://github.com/goauthentik/authentik/blob/main/helm/values.yaml
+# ============================================================
+
+authentik:
+  # ---- Kern-Konfiguration ---------------------------------
+  # secret_key kommt aus dem SealedSecret über global.env
+  authentik:
+    error_reporting:
+      enabled: false
+    disable_update_check: true
+    disable_startup_analytics: true
+    avatars: "none"
+    log_level: info
+    postgresql:
+      host: "{{ .Release.Name }}-postgresql"
+      name: authentik
+      user: authentik
+      # password kommt aus global.env
+
+  # ---- Bootstrap (erster Admin-Account) -------------------
+  # Beim ersten Start legt Authentik automatisch einen Admin-User an,
+  # sofern AUTHENTIK_BOOTSTRAP_EMAIL und AUTHENTIK_BOOTSTRAP_PASSWORD gesetzt sind.
+  global:
+    env:
+      - name: AUTHENTIK_SECRET_KEY
+        valueFrom:
+          secretKeyRef:
+            name: authentik-credentials
+            key: secret_key
+      - name: AUTHENTIK_POSTGRESQL__PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: authentik-credentials
+            key: db_password
+      - name: AUTHENTIK_BOOTSTRAP_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: authentik-credentials
+            key: bootstrap_password
+      - name: AUTHENTIK_BOOTSTRAP_EMAIL
+        valueFrom:
+          secretKeyRef:
+            name: authentik-credentials
+            key: bootstrap_email
+
+  # ---- Server (Web-UI + API) ------------------------------
+  server:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+
+    ingress:
+      enabled: true
+      ingressClassName: traefik
+      annotations:
+        traefik.ingress.kubernetes.io/router.entrypoints: web
+      hosts:
+        - host: authentik.homeserver
+          paths:
+            - path: /
+              pathType: Prefix
+      tls: []
+
+    # Metrics für VictoriaMetrics/Prometheus-Scraping
+    metrics:
+      serviceMonitor:
+        create: false
+
+  # ---- Worker (Background-Tasks, z.B. Policy-Eval) --------
+  worker:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+  # ---- Eingebettete PostgreSQL (Bitnami) ------------------
+  # Für Home-Lab ausreichend; für Prod: externen PostgreSQL nutzen.
+  postgresql:
+    enabled: true
+    auth:
+      username: authentik
+      database: authentik
+      existingSecret: authentik-credentials
+      secretKeys:
+        userPasswordKey: db_password
+    primary:
+      persistence:
+        enabled: true
+        storageClass: local-path
+        size: 4Gi
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 256Mi
+
+  # ---- Eingebettetes Redis (Bitnami) ----------------------
+  redis:
+    enabled: true
+    auth:
+      enabled: false
+    master:
+      persistence:
+        enabled: true
+        storageClass: local-path
+        size: 1Gi
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          memory: 128Mi

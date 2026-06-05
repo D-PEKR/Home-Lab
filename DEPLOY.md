@@ -210,17 +210,48 @@ Das Monitoring scrapt automatisch:
 
 ---
 
+## Schritt 7 — Single Sign-On (SSO) einrichten
+
+Nach dem automatischen ArgoCD-Sync von `argocd/apps/authentik/` steht Authentik als zentraler Identity Provider bereit.
+
+**Voraussetzung:** Secrets müssen zuerst mit `kubeseal` versiegelt und in `values.yaml` eingetragen werden (Anleitung: [docs/14-sso-authentik.md](docs/14-sso-authentik.md)).
+
+```bash
+# 1. Sealed-Werte erzeugen und in values.yaml eintragen (Einmalaufwand)
+#    → Anleitung: docs/14-sso-authentik.md, Abschnitt "Schritt 1"
+
+# 2. Authentik-Status prüfen (ArgoCD synct automatisch nach Push)
+ssh ubuntu@192.168.178.94 \
+  'sudo kubectl -n authentik get pods'
+
+# 3. Erster Login unter http://authentik.homeserver/if/flow/initial-setup/
+#    → Admin-Account mit bootstrap_email / bootstrap_password
+
+# 4. OIDC-Clients in Authentik anlegen (Admin-UI), dann Services konfigurieren:
+#    Grafana:        argocd/apps/monitoring/values.yaml → auth.generic_oauth
+#    ArgoCD:         argocd/apps/argocd/argocd-cm.yaml  → oidc.config
+#    Headlamp:       argocd/apps/headlamp/values.yaml   → config.oidc
+#    Argo Workflows: argocd/apps/argo-workflows/values.yaml → server.sso
+#    MinIO:          MinIO-Konsole → Identity → OpenID
+#    Gotify/Semaphore: Traefik Forward-Auth-Middleware (Template in docs)
+```
+
+Vollständige Service-by-Service-Anleitung: **[docs/14-sso-authentik.md](docs/14-sso-authentik.md)**
+
+---
+
 ## Service-URLs
 
 | Service | URL | Authentifizierung |
 |---|---|---|
-| ArgoCD | http://192.168.178.94:30080 | admin / siehe Step 3 |
-| Grafana | http://grafana.homeserver | admin / auto-generiert |
-| Headlamp | http://headlamp.homeserver | Token-basiert |
-| Semaphore | http://semaphore.homeserver | admin / aus Vault |
-| Gotify | http://gotify.homeserver | admin |
-| Argo Workflows | http://argo-workflows.homeserver | — |
-| MinIO | http://minio.homeserver | root-Creds aus SealedSecret |
+| **Authentik** | **http://authentik.homeserver** | **SSO-Portal (nach Setup)** |
+| ArgoCD | http://192.168.178.94:30080 | admin / OIDC via Authentik |
+| Grafana | http://grafana.homeserver | OIDC via Authentik |
+| Headlamp | http://headlamp.homeserver | OIDC via Authentik |
+| Semaphore | http://semaphore.homeserver | Forward Auth via Authentik |
+| Gotify | http://gotify.homeserver | Forward Auth via Authentik |
+| Argo Workflows | http://argo-workflows.homeserver | OIDC via Authentik |
+| MinIO | http://minio.homeserver | OIDC via Authentik |
 | Paperless-NGX | http://homeserver2:8000 | admin / aus Vault |
 | TinyTeller | http://homeserver2:3002 | — |
 | Day Pilot | http://homeserver2:3003 | — |
