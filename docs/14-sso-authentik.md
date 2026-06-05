@@ -42,7 +42,7 @@ echo -n "$SECRET_KEY" | kubeseal --raw \
   --namespace authentik \
   --name authentik-credentials \
   --controller-namespace sealed-secrets \
-  --controller-name sealed-secrets
+  --controller-name sealed-secrets-controller
 ```
 
 ### 1.2 — Alle vier Werte versiegeln
