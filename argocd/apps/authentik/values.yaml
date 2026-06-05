@@ -93,9 +93,9 @@ authentik:
     resources:
       requests:
         cpu: 50m
-        memory: 128Mi
-      limits:
         memory: 256Mi
+      limits:
+        memory: 512Mi
 
   # ---- PostgreSQL (eingebettet) ---------------------------
   # Chart 2026.x nutzt library/postgres:17-bookworm statt des alten Bitnami-Images.

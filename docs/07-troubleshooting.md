@@ -136,7 +136,7 @@ kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository
 
 # Verbindung aus dem argocd-repo-server-Pod testen
 kubectl exec -n argocd deployment/argocd-repo-server -- \
-  git ls-remote https://github.com/YOUR_USER/home-server.git
+  git ls-remote https://github.com/PKE-Tech/Home-Lab.git
 ```
 
 **Privates Repo ohne Credentials:**

@@ -107,7 +107,7 @@ submit through the UI.
 
 ```bash
 argo submit -n argo-workflows --from workflowtemplate/git-ci \
-  -p repo=https://github.com/D-PEKR/Home-Lab.git \
+  -p repo=https://github.com/PKE-Tech/Home-Lab.git \
   -p revision=main \
   -p image=alpine:3.20 \
   -p cmd="ls -la && cat README.md | head"

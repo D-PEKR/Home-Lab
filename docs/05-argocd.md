@@ -70,12 +70,12 @@ Bei privatem Repo Credentials über UI oder CLI hinterlegen:
 
 ```bash
 # HTTPS mit User/Password oder Token
-argocd repo add https://github.com/YOUR_USER/home-server.git \
+argocd repo add https://github.com/PKE-Tech/Home-Lab.git \
   --username YOUR_USER \
   --password YOUR_TOKEN
 
 # SSH mit Key
-argocd repo add git@github.com:YOUR_USER/home-server.git \
+argocd repo add git@github.com:PKE-Tech/Home-Lab.git \
   --ssh-private-key-path ~/.ssh/id_rsa
 
 # Repos prüfen
@@ -95,7 +95,7 @@ metadata:
 type: Opaque
 stringData:
   type: git
-  url: https://github.com/YOUR_USER/home-server.git
+  url: https://github.com/PKE-Tech/Home-Lab.git
   password: ghp_YOUR_GITHUB_TOKEN
   username: YOUR_USER
 ```
@@ -115,7 +115,7 @@ ArgoCD-Applications zu erzeugen.
 ```yaml
 generators:
   - git:
-      repoURL: https://github.com/YOUR_USER/home-server.git
+      repoURL: https://github.com/PKE-Tech/Home-Lab.git
       revision: HEAD
       directories:
         - path: "argocd/apps/*"
@@ -325,10 +325,10 @@ argocd app delete example-whoami --cascade
 argocd repo list
 
 # Repo hinzufügen
-argocd repo add https://github.com/YOUR_USER/home-server.git
+argocd repo add https://github.com/PKE-Tech/Home-Lab.git
 
 # Repo entfernen
-argocd repo rm https://github.com/YOUR_USER/home-server.git
+argocd repo rm https://github.com/PKE-Tech/Home-Lab.git
 ```
 
 **Accounts:**
