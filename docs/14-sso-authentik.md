@@ -143,6 +143,7 @@ In `argocd/apps/monitoring/values.yaml` unter `victoria-metrics-k8s-stack.grafan
 
 ```yaml
 grafana:
+  envFromSecret: grafana-oauth-secret        # Secret wird in Schritt 4.3 angelegt
   grafana.ini:
     server:
       domain: grafana.homeserver
@@ -153,8 +154,8 @@ grafana:
       icon: "signin"
       allow_sign_up: true
       auto_login: true
-      client_id: "<CLIENT_ID_AUS_AUTHENTIK>"
-      client_secret: "<CLIENT_SECRET_AUS_AUTHENTIK>"
+      client_id: "TP7bdPbe2ozhgzmScJ73UhJVJXeGCyOSHTGcxfpB"
+      client_secret: "$__env{GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}"
       scopes: "openid email profile"
       auth_url: "http://authentik.homeserver/application/o/authorize/"
       token_url: "http://authentik.homeserver/application/o/token/"
@@ -164,8 +165,42 @@ grafana:
 ```
 
 > `auto_login: true` sorgt dafür, dass Grafana automatisch zu Authentik weiterleitet, ohne den eigenen Login-Screen zu zeigen.
+> `$__env{...}` lässt Grafana den Wert zur Laufzeit aus der Umgebungsvariable lesen — kein Klartext im Git.
 
-**Warnung:** Das `client_secret` nicht im Klartext committen! Nutze ein SealedSecret und referenziere es via `envFrom` / `extraSecretMounts`.
+### 4.3 — client_secret als SealedSecret absichern
+
+Das `client_secret` darf **nicht** im Klartext in `values.yaml` landen. Grafana liest es stattdessen aus der Umgebungsvariable `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET`, die via `envFromSecret` aus einem versiegelten Kubernetes Secret injiziert wird.
+
+**Secret versiegeln (einmalig von der Workstation):**
+
+```bash
+echo -n "<DEIN_CLIENT_SECRET>" | kubeseal --raw \
+  --namespace monitoring \
+  --name grafana-oauth-secret \
+  --controller-namespace sealed-secrets \
+  --controller-name sealed-secrets
+```
+
+Die Ausgabe (langer Base64-Blob) in eine neue Datei eintragen:
+
+```yaml
+# argocd/apps/monitoring/templates/grafana-oauth-sealedsecret.yaml
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: grafana-oauth-secret
+  namespace: monitoring
+spec:
+  encryptedData:
+    GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: "<AUSGABE_VON_KUBESEAL>"
+  template:
+    metadata:
+      name: grafana-oauth-secret
+      namespace: monitoring
+    type: Opaque
+```
+
+Nach dem Commit entschlüsselt der sealed-secrets-Controller das Secret automatisch. Grafana liest `GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET` via `envFromSecret: grafana-oauth-secret` (s. Schritt 4.2).
 
 ---
 
