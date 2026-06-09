@@ -1,0 +1,29 @@
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: homeserver2-availability
+  namespace: {{ .Release.Namespace }}
+spec:
+  groups:
+    - name: homeserver2.availability
+      interval: 30s
+      rules:
+        - alert: Homeserver2Down
+          expr: |
+            (
+              up{job=~".*node-exporter.*", instance=~"192\\.168\\.178\\.95.*"} == 0
+            ) or (
+              kube_node_status_condition{
+                node="homeserver2",
+                condition="Ready",
+                status="true"
+              } == 0
+            )
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "homeserver2 nicht erreichbar"
+            description: >-
+              homeserver2 (192.168.178.95) antwortet seit mehr als 1 Minute nicht mehr.
+              Node-Exporter oder k8s-Node sind ausgefallen.
