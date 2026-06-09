@@ -146,6 +146,7 @@ Home-Lab/
 │   ├── 11-gotify.md                  # Push-Notifications via Gotify
 │   ├── 12-paperless-ai.md            # KI-Dokumentenanalyse für Paperless-NGX
 │   ├── 13-argo-workflows.md          # Private CI/CD mit Argo Workflows + MinIO
+│   ├── 14-sso-authentik.md           # Single-Sign-On Method 
 │   └── assets/banner.svg
 ├── ansible/
 │   ├── site.yml                      # Entry-Point
@@ -175,6 +176,7 @@ Home-Lab/
         ├── minio/                          # S3-Artifact-Store für Argo Workflows
         ├── paperless-ai/                   # KI-Dokumentenanalyse für Paperless-NGX
         ├── sealed-secrets/                 # SealedSecrets-Controller
+        ├── authentik/                      # Authentik Single-Sign-On Method
         └── semaphore/                      # Ansible-Web-UI
 ```
 
