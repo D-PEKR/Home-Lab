@@ -9,6 +9,9 @@ server={{ network_gateway }}
 # Wildcard: *.homeserver und homeserver selbst → statische Server-IP
 address=/homeserver/{{ network_static_ip }}
 
+# homeserver2 → statische IP
+address=/homeserver2/192.168.178.95
+
 # bind-dynamic statt bind-interfaces, damit dnsmasq die tailscale0-Adresse
 # automatisch übernimmt, sobald tailscaled startet (kein Restart nötig).
 # - LAN-Clients fragen über die statische LAN-IP

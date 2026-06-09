@@ -8,7 +8,7 @@ spec:
   jobName: homeserver2-node-exporter
   targetEndpoints:
     - targets:
-        - "homeserver2:9100"
+        - "192.168.178.95:9100"
       labels:
         job: node-exporter
         instance: homeserver2
@@ -22,7 +22,7 @@ spec:
   jobName: homeserver2-cadvisor
   targetEndpoints:
     - targets:
-        - "homeserver2:18080"
+        - "192.168.178.95:18080"
       labels:
         job: cadvisor
         instance: homeserver2
