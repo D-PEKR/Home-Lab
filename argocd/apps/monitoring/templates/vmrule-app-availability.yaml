@@ -18,9 +18,9 @@ spec:
           labels:
             severity: critical
           annotations:
-            summary: "{{ $labels.deployment }} nicht erreichbar"
+            summary: "{{`{{ $labels.deployment }}`}} nicht erreichbar"
             description: >-
-              Deployment {{ $labels.deployment }} (Namespace: {{ $labels.namespace }})
+              Deployment {{`{{ $labels.deployment }}`}} (Namespace: {{`{{ $labels.namespace }}`}})
               hat seit mehr als 1 Minute keine verfügbaren Pods.
 
         - alert: StatefulSetUnavailable
@@ -32,7 +32,7 @@ spec:
           labels:
             severity: critical
           annotations:
-            summary: "{{ $labels.statefulset }} nicht erreichbar"
+            summary: "{{`{{ $labels.statefulset }}`}} nicht erreichbar"
             description: >-
-              StatefulSet {{ $labels.statefulset }} (Namespace: {{ $labels.namespace }})
+              StatefulSet {{`{{ $labels.statefulset }}`}} (Namespace: {{`{{ $labels.namespace }}`}})
               hat seit mehr als 1 Minute keine ready Pods.
