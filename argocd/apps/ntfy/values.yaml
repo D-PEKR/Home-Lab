@@ -1,0 +1,82 @@
+---
+replicaCount: 1
+
+image:
+  repository: binwiederhier/ntfy
+  pullPolicy: IfNotPresent
+  # Pinned for reproducibility. Bump to track upstream releases:
+  # https://hub.docker.com/r/binwiederhier/ntfy/tags
+  tag: "v2.11.0"
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations: {}
+  hosts:
+    - host: ntfy.homeserver
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+persistence:
+  enabled: true
+  storageClassName: local-path
+  size: 1Gi
+  accessMode: ReadWriteOnce
+  mountPath: /var/lib/ntfy
+
+# ntfy server configuration — rendered into a ConfigMap as server.yml.
+# upstream-base-url enables iOS push via ntfy.sh's APNs relay.
+# Set base-url to the public-facing URL so the iOS app can subscribe correctly.
+config:
+  base-url: "http://ntfy.homeserver"
+  upstream-base-url: "https://ntfy.sh"
+  behind-proxy: true
+  cache-file: /var/lib/ntfy/cache.db
+  auth-file: /var/lib/ntfy/auth.db
+  # read-write = everyone can publish and subscribe without auth.
+  # Set to "deny-all" and create users via ntfy CLI if you want auth.
+  auth-default-access: "read-write"
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

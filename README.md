@@ -49,7 +49,7 @@ Am Ende druckt das Playbook die ArgoCD-URL und das Admin-Passwort. Fertig.
 | Kubernetes-UI    | **Headlamp**                           | Browser-Dashboard für den Cluster                                      |
 | Secrets          | **Sealed Secrets + kubeseal-webgui**   | Verschlüsselte Secrets in Git, nur im Cluster entschlüsselbar          |
 | Dokumenten-Scan  | **scanbd + Fujitsu USB-Scanner**       | Bare-Metal-Scan-Daemon → CIFS → Paperless-NGX auf der NAS              |
-| Notifications    | **Gotify**                             | Self-hosted Push-Notifications (Android/iOS-Client)                    |
+| Notifications    | **Gotify** + **ntfy**                  | Self-hosted Push-Notifications — Gotify (Android), ntfy (iOS + Android) |
 | Remote-Access    | **Tailscale**                          | WireGuard-Mesh-VPN — keine Portfreigaben, keine öffentliche IP         |
 | CI/CD intern     | **Argo Workflows + MinIO**             | Private CI/CD-Pipeline + S3-Artifact-Store im Cluster                 |
 | Ingress          | **Traefik v2** (mit k3s gebundled)     | HTTP/HTTPS-Routing in den Cluster                                      |
@@ -146,7 +146,8 @@ Home-Lab/
 │   ├── 11-gotify.md                  # Push-Notifications via Gotify
 │   ├── 12-paperless-ai.md            # KI-Dokumentenanalyse für Paperless-NGX
 │   ├── 13-argo-workflows.md          # Private CI/CD mit Argo Workflows + MinIO
-│   ├── 14-sso-authentik.md           # Single-Sign-On Method 
+│   ├── 14-sso-authentik.md           # Single-Sign-On Method
+│   ├── 15-ntfy.md                    # iOS Push-Notifications via ntfy
 │   └── assets/banner.svg
 ├── ansible/
 │   ├── site.yml                      # Entry-Point
@@ -168,7 +169,8 @@ Home-Lab/
     ├── bootstrap/root-applicationset.yaml  # Erkennt jedes Verzeichnis darunter
     └── apps/                               # Ein Ordner pro ArgoCD-Application
         ├── example-whoami/                 # Referenz-Helm-Chart
-        ├── gotify/                         # Push-Notifications
+        ├── gotify/                         # Push-Notifications (Android)
+        ├── ntfy/                           # Push-Notifications (iOS + Android)
         ├── headlamp/                       # Kubernetes-Web-Dashboard
         ├── kubeseal-webgui/                # Sealed-Secrets-Verschlüsselungs-UI
         ├── monitoring/                     # VictoriaMetrics + Grafana
@@ -194,7 +196,7 @@ Ein schlanker VictoriaMetrics-+-Grafana-Stack lebt unter
 - **Cluster-Metriken:** kubelet/cAdvisor, kube-apiserver, kube-state-metrics, CoreDNS.
   Scheduler/Controller-Manager/etcd-Scrapes sind deaktiviert — k3s vereint sie in einem Prozess.
 - **Alerts:** Default-kube-prometheus-Rules, geroutet auf einen `blackhole`-Receiver,
-  bis Discord/Slack/Gotify in `values.yaml` verdrahtet ist.
+  bis Discord/Slack/Gotify/ntfy in `values.yaml` verdrahtet ist.
 - **Dashboards:** Node Exporter Full, VictoriaMetrics + Kubernetes „Views / Global, Namespaces, Nodes, Pods" von grafana.com.
 
 Grafana öffnen unter **http://grafana.homeserver** (LAN + Tailnet via dnsmasq).
@@ -261,6 +263,7 @@ Vollständige Architektur in **[docs/01-overview.md](docs/01-overview.md)**.
 | [Gotify-Push](docs/11-gotify.md)                                | Self-hosted Push-Notifications aus dem Stack |
 | [Paperless-AI](docs/12-paperless-ai.md)                         | KI-Dokumentenanalyse + RAG für Paperless-NGX |
 | [Argo Workflows](docs/13-argo-workflows.md)                     | Private CI/CD-Pipeline mit MinIO-Artifact-Store |
+| [ntfy iOS-Push](docs/15-ntfy.md)                                | Self-hosted ntfy mit iOS APNs-Relay via ntfy.sh |
 
 ---
 
