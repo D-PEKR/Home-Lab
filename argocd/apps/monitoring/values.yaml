@@ -107,7 +107,7 @@ victoria-metrics-k8s-stack:
               send_resolved: true
         - name: ntfy
           webhook_configs:
-            - url: 'http://ntfy.ntfy.svc.cluster.local/Home-Lab'
+            - url: 'http://ntfy-bridge.ntfy-bridge.svc.cluster.local:8080/alert'
               send_resolved: true
       inhibit_rules:
         - target_matchers:

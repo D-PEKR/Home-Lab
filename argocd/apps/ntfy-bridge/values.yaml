@@ -1,0 +1,51 @@
+---
+replicaCount: 1
+
+image:
+  repository: python
+  tag: "3.12-slim"
+  pullPolicy: IfNotPresent
+
+# ntfy connection — URL of the ntfy service (in-cluster or external).
+ntfy:
+  # Base URL without topic, e.g. http://ntfy.ntfy.svc.cluster.local
+  url: "http://ntfy.ntfy.svc.cluster.local"
+  # Topic to post alerts to
+  topic: "Home-Lab"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 5m
+    memory: 24Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

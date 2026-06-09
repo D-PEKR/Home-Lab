@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ntfy-bridge.fullname" . }}-script
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ntfy-bridge.labels" . | nindent 4 }}
+data:
+  bridge.py: |
+    #!/usr/bin/env python3
+    """
+    Alertmanager → ntfy bridge.
+    Receives Alertmanager webhook JSON, sends one ntfy message per alert
+    with proper Title, Priority and Tags headers.
+    Uses only Python stdlib — no pip required.
+    """
+    import json
+    import os
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    NTFY_URL   = os.environ["NTFY_URL"].rstrip("/")
+    NTFY_TOPIC = os.environ["NTFY_TOPIC"]
+
+    # ntfy priority: 5=urgent 4=high 3=default 2=low 1=min
+    SEVERITY_PRIORITY = {"critical": 5, "warning": 4, "info": 3}
+
+    # ntfy tags rendered as emojis in the app
+    STATUS_TAGS = {
+        "firing":   {"critical": "rotating_light", "warning": "warning", "info": "information_source"},
+        "resolved": {"critical": "white_check_mark", "warning": "white_check_mark", "info": "white_check_mark"},
+    }
+
+    def send_to_ntfy(title: str, message: str, priority: int, tags: str) -> None:
+        req = urllib.request.Request(
+            f"{NTFY_URL}/{NTFY_TOPIC}",
+            data=message.encode(),
+            headers={
+                "Title":    title,
+                "Priority": str(priority),
+                "Tags":     tags,
+            },
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=5)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            body   = json.loads(self.rfile.read(length))
+
+            for alert in body.get("alerts", []):
+                status    = alert.get("status", "firing")
+                name      = alert.get("labels", {}).get("alertname", "Alert")
+                severity  = alert.get("labels", {}).get("severity", "info")
+                namespace = alert.get("labels", {}).get("namespace", "")
+                summary   = (
+                    alert.get("annotations", {}).get("summary") or ""
+                )
+                description = (
+                    alert.get("annotations", {}).get("description") or ""
+                )
+
+                icon  = "🔴" if status == "firing" else "✅"
+                title = f"{icon} {name}"
+
+                lines = []
+                if summary:
+                    lines.append(summary)
+                if description and description != summary:
+                    lines.append(description)
+                if namespace:
+                    lines.append(f"Namespace: {namespace}")
+                lines.append(f"Severity:  {severity}")
+                lines.append(f"Status:    {status}")
+
+                message  = "\n".join(lines)
+                priority = SEVERITY_PRIORITY.get(severity, 3)
+                tag      = STATUS_TAGS.get(status, {}).get(severity, "bell")
+
+                try:
+                    send_to_ntfy(title, message, priority, tag)
+                    print(f"[OK] {title}")
+                except Exception as exc:
+                    print(f"[ERR] {title}: {exc}")
+
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, fmt, *args):
+            print(fmt % args)
+
+    if __name__ == "__main__":
+        port = int(os.environ.get("PORT", 8080))
+        print(f"ntfy-bridge listening on :{port} → {NTFY_URL}/{NTFY_TOPIC}")
+        HTTPServer(("0.0.0.0", port), Handler).serve_forever()
