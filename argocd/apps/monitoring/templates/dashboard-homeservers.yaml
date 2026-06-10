@@ -48,7 +48,7 @@ data:
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\",instance=~\"$instance\"}[5m])) * 100)",
               "instant": true,
-              "legendFormat": "{{instance}}",
+              "legendFormat": "{{ "{{instance}}" }}",
               "refId": "A"
             }
           ],
@@ -89,7 +89,7 @@ data:
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "(node_memory_MemTotal_bytes{instance=~\"$instance\"} - node_memory_MemAvailable_bytes{instance=~\"$instance\"}) / node_memory_MemTotal_bytes{instance=~\"$instance\"} * 100",
               "instant": true,
-              "legendFormat": "{{instance}}",
+              "legendFormat": "{{ "{{instance}}" }}",
               "refId": "A"
             }
           ],
@@ -130,7 +130,7 @@ data:
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "(node_filesystem_size_bytes{instance=~\"$instance\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} - node_filesystem_avail_bytes{instance=~\"$instance\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"}) / node_filesystem_size_bytes{instance=~\"$instance\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} * 100",
               "instant": true,
-              "legendFormat": "{{instance}}",
+              "legendFormat": "{{ "{{instance}}" }}",
               "refId": "A"
             }
           ],
@@ -165,7 +165,7 @@ data:
             {
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\",instance=~\"$instance\"}[5m])) * 100)",
-              "legendFormat": "{{instance}}",
+              "legendFormat": "{{ "{{instance}}" }}",
               "refId": "A"
             }
           ],
@@ -198,13 +198,13 @@ data:
             {
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "node_memory_MemTotal_bytes{instance=~\"$instance\"} - node_memory_MemAvailable_bytes{instance=~\"$instance\"}",
-              "legendFormat": "Genutzt {{instance}}",
+              "legendFormat": "Genutzt {{ "{{instance}}" }}",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "node_memory_MemTotal_bytes{instance=~\"$instance\"}",
-              "legendFormat": "Gesamt {{instance}}",
+              "legendFormat": "Gesamt {{ "{{instance}}" }}",
               "refId": "B"
             }
           ],
@@ -237,13 +237,13 @@ data:
             {
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "rate(node_network_receive_bytes_total{instance=~\"$instance\",device!~\"lo|veth.*|br.*|cali.*|tunl.*\"}[5m])",
-              "legendFormat": "RX {{instance}} {{device}}",
+              "legendFormat": "RX {{ "{{instance}}" }} {{ "{{device}}" }}",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "rate(node_network_transmit_bytes_total{instance=~\"$instance\",device!~\"lo|veth.*|br.*|cali.*|tunl.*\"}[5m])",
-              "legendFormat": "TX {{instance}} {{device}}",
+              "legendFormat": "TX {{ "{{instance}}" }} {{ "{{device}}" }}",
               "refId": "B"
             }
           ],
@@ -276,13 +276,13 @@ data:
             {
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "rate(node_disk_read_bytes_total{instance=~\"$instance\",device!~\"dm-.*\"}[5m])",
-              "legendFormat": "Lesen {{instance}} {{device}}",
+              "legendFormat": "Lesen {{ "{{instance}}" }} {{ "{{device}}" }}",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "${datasource}"},
               "expr": "rate(node_disk_written_bytes_total{instance=~\"$instance\",device!~\"dm-.*\"}[5m])",
-              "legendFormat": "Schreiben {{instance}} {{device}}",
+              "legendFormat": "Schreiben {{ "{{instance}}" }} {{ "{{device}}" }}",
               "refId": "B"
             }
           ],
