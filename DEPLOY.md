@@ -8,8 +8,8 @@ Vollständige Anleitung zur Erstinstallation und Verwaltung der Home-Lab-Infrast
 
 | Maschine        | IP               | Rolle                                          |
 |-----------------|------------------|------------------------------------------------|
-| `homeserver`    | 192.168.178.94  | k3s + ArgoCD + Semaphore (Kubernetes-Stack)    |
-| `homeserver2`   | 192.168.178.95   | Docker Compose (Paperless, TinyTeller, etc.)   |
+| `homeserver`    | 192.168.178.94   | k3s + ArgoCD + Semaphore (Kubernetes-Stack)    |
+| `worker-0`      | 192.168.178.95   | Docker Compose (Paperless, TinyTeller, etc.)   |
 
 ---
 
@@ -45,7 +45,7 @@ ansible -i ansible/inventory/hosts.yml all -m ping
 ## Schritt 1 — Repo klonen & Abhängigkeiten installieren
 
 ```bash
-git clone https://github.com/PKE-Tech/Home-Lab
+git clone https://github.com/PKE-Tech/capulus-core
 cd Home-Lab
 make deps
 ```
@@ -78,20 +78,20 @@ ansible-vault encrypt_string 'DEIN_WERT' --name 'variable_name'
 # Ergebnis in group_vars/all.yml einfügen
 ```
 
-### 2.2 — homeserver2 (Docker Compose)
+### 2.2 — worker-0 (Docker Compose)
 
-Vault-Datei für homeserver2 anlegen:
+Vault-Datei für worker-0 anlegen:
 
 ```bash
-cp ansible/host_vars/homeserver2/vault.yml.example \
-   ansible/host_vars/homeserver2/vault.yml
+cp ansible/host_vars/worker-0/vault.yml.example \
+   ansible/host_vars/worker-0/vault.yml
 ```
 
 Datei befüllen — Secrets verschlüsseln:
 
 ```bash
-# sudo-Passwort für homeserver2
-ansible-vault encrypt_string 'SUDO_PASSWORT' --name 'vault_homeserver2_become_password'
+# sudo-Passwort für worker-0
+ansible-vault encrypt_string 'SUDO_PASSWORT' --name 'vault_worker-0_become_password'
 
 # Paperless-Datenbank-Passwort
 ansible-vault encrypt_string 'DB_PASSWORT' --name 'vault_paperless_db_password'
@@ -103,7 +103,7 @@ ansible-vault encrypt_string 'ADMIN_PASSWORT' --name 'vault_paperless_admin_pass
 ansible-vault encrypt_string 'SECRET_KEY_STRING' --name 'vault_paperless_secret_key'
 ```
 
-Ergebnisse in `ansible/host_vars/homeserver2/vault.yml` einfügen.
+Ergebnisse in `ansible/host_vars/worker-0/vault.yml` einfügen.
 
 > **Wichtig:** `vault.yml` niemals committen — sie liegt bereits in `.gitignore`.
 
@@ -140,26 +140,26 @@ ArgoCD UI: **http://192.168.178.94:30080** (Benutzer: `admin`)
 
 ---
 
-## Schritt 4 — homeserver2 provisionieren (Docker Compose)
+## Schritt 4 — worker-0 provisionieren (Docker Compose)
 
 ```bash
 # Dry-run zuerst
-make homeserver2-check
+make worker-0-check
 
 # Vollständige Installation
-make homeserver2
+make worker-0
 
 # Einzelne Services deployen
-ansible-playbook -i ansible/inventory/hosts.yml ansible/homeserver2.yml \
+ansible-playbook -i ansible/inventory/hosts.yml ansible/worker-0.yml \
   --tags paperless $(VAULT_OPTS)
 
-ansible-playbook -i ansible/inventory/hosts.yml ansible/homeserver2.yml \
+ansible-playbook -i ansible/inventory/hosts.yml ansible/worker-0.yml \
   --tags tinyteller $(VAULT_OPTS)
 
-ansible-playbook -i ansible/inventory/hosts.yml ansible/homeserver2.yml \
+ansible-playbook -i ansible/inventory/hosts.yml ansible/worker-0.yml \
   --tags day-pilot $(VAULT_OPTS)
 
-ansible-playbook -i ansible/inventory/hosts.yml ansible/homeserver2.yml \
+ansible-playbook -i ansible/inventory/hosts.yml ansible/worker-0.yml \
   --tags node-exporter $(VAULT_OPTS)
 ```
 
@@ -170,7 +170,7 @@ ansible-playbook -i ansible/inventory/hosts.yml ansible/homeserver2.yml \
 Semaphore wird über ArgoCD deployed (nach Step 3). Sobald der Pod läuft:
 
 ```bash
-# SSH-Key auf alle Targets verteilen (homeserver + homeserver2)
+# SSH-Key auf alle Targets verteilen (homeserver + worker-0)
 make semaphore-targets
 
 # Projekte / Inventories / Templates via API provisionieren
@@ -184,7 +184,7 @@ Folgende Projekte werden automatisch angelegt:
 | Projekt | Playbook | Inventory |
 |---|---|---|
 | `home-server` | `ansible/site.yml` | homeserver (192.168.178.94) |
-| `homeserver2` | `ansible/homeserver2.yml` | homeserver2 (192.168.178.95) |
+| `worker-0`    | `ansible/worker-0.yml` | worker-0 (192.168.178.95) |
 
 Beide laufen täglich um 06:00 Uhr automatisch durch.
 
@@ -205,8 +205,8 @@ Grafana: **http://grafana.homeserver** (Benutzer: `admin`)
 
 Das Monitoring scrapt automatisch:
 - `homeserver` — Node Exporter (DaemonSet im Cluster)
-- `homeserver2:9100` — Node Exporter (Docker Compose)
-- `homeserver2:18080` — cAdvisor (Docker Compose)
+- `worker-0:9100` — Node Exporter (Docker Compose)
+- `worker-0:18080` — cAdvisor (Docker Compose)
 
 ---
 
@@ -252,9 +252,9 @@ Vollständige Service-by-Service-Anleitung: **[docs/14-sso-authentik.md](docs/14
 | Gotify | http://gotify.homeserver | Forward Auth via Authentik |
 | Argo Workflows | http://argo-workflows.homeserver | OIDC via Authentik |
 | MinIO | http://minio.homeserver | OIDC via Authentik |
-| Paperless-NGX | http://homeserver2:8000 | admin / aus Vault |
-| TinyTeller | http://homeserver2:3002 | — |
-| Day Pilot | http://homeserver2:3003 | — |
+| Paperless-NGX | http://worker-0:8000 | admin / aus Vault |
+| TinyTeller | http://worker-0:3002 | — |
+| Day Pilot | http://worker-0:3003 | — |
 
 ---
 
@@ -317,7 +317,7 @@ ssh ubuntu@192.168.178.94 \
    -p "{\"operation\":{\"sync\":{}}}" --type merge'
 ```
 
-### Paperless-Container neu starten (homeserver2)
+### Paperless-Container neu starten (worker-0)
 
 ```bash
 ssh ubuntu@192.168.178.95
@@ -340,7 +340,7 @@ make semaphore-bootstrap
 ssh ubuntu@192.168.178.94
 sudo systemctl status mnt-paperless\\x2dconsume.mount
 sudo mount -a
-# Wenn homeserver2 nicht erreichbar: zuerst homeserver2 starten
+# Wenn worker-0 nicht erreichbar: zuerst worker-0 starten
 ```
 
 ### Grafana `no such column: is_service_account`
@@ -365,12 +365,12 @@ ssh ubuntu@192.168.178.94 \
 home-server/
 ├── ansible/
 │   ├── site.yml                    ← Haupt-Playbook (homeserver)
-│   ├── homeserver2.yml             ← Docker-Compose-Playbook (homeserver2)
+│   ├── worker-0.yml             ← Docker-Compose-Playbook (worker-0)
 │   ├── inventory/hosts.yml         ← IP-Adressen beider Server
 │   ├── group_vars/all.yml          ← Alle Konfigurationswerte + Vault-Secrets
 │   ├── host_vars/
 │   │   ├── homeserver/             ← (falls nötig: host-spezifische Vars)
-│   │   └── homeserver2/
+│   │   └── worker-0/
 │   │       ├── vars.yml            ← Service-Konfiguration
 │   │       └── vault.yml           ← Verschlüsselte Secrets (nicht im Git!)
 │   └── roles/
@@ -391,7 +391,7 @@ home-server/
     └── apps/
         ├── monitoring/
         │   ├── values.yaml
-        │   └── homeserver2-scrape.yaml  ← VMStaticScrape für homeserver2
+        │   └── worker-0-scrape.yaml  ← VMStaticScrape für worker-0
         ├── gotify/
         ├── headlamp/
         ├── sealed-secrets/
