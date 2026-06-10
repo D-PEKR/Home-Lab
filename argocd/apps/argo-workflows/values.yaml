@@ -34,11 +34,11 @@ argo-workflows:
     # Zum Aktivieren: authModes auf [sso] setzen, sso.enabled: true
     # (erst nach dem Eintragen der Secrets in ssoSecret unten)
     authModes:
-      - server
+      - sso
     # Serve plain HTTP — TLS is terminated/none behind Traefik on the LAN.
     secure: false
     sso:
-      enabled: false
+      enabled: true
       issuer: "http://authentik.homeserver/application/o/argo-workflows/"
       clientId:
         name: argo-workflows-sso
@@ -101,10 +101,10 @@ argo-workflows:
 # 3. enabled auf true setzen
 # 4. Gleichzeitig oben authModes: [sso] und sso.enabled: true setzen
 ssoSecret:
-  enabled: false
+  enabled: true
   name: argo-workflows-sso
-  encryptedClientId: ""
-  encryptedClientSecret: ""
+  encryptedClientId: "gBkPejcOanZH/aq99F/nyFb8B4FEl8mlwD8etJxt7EFyPzfqHAyx3cDfeuW5DIMXVCn69bwL58WY/HB4LFoEyjl7tQ/D4U/ZyZ4/G5UMOolcaWkoFK1BzAqqX+uD3ynM63E+EsgffqHrTjhbldwpNXCLJSKU2yMi+eSP7nrQCZHnGiNH1LPgorvJHZE/hHzi7eP4Tl2r8Cbq22wCed4s2/1QQMEI1EBtMEbGb4np/keTBeat0US4FGu/MTV5Iy6mZ2+4taNLAVG+1zWgv2/KNRSzOAN6W30tDlTeUEtX1Yzep0cHx7wikgaIsnYYRCZ5R10Dn8XY5mLl8IjI7C249tUdcu2Lmw93dhNd3nfBVVGFuQws5Zhu6tAnYhfMOxj5QDIHpdTmH9BKtLsUKUP1Y+DS8aL/ylvFfufN4VoH5H38UVkD9K1szgFv5ySuZZxs42VGEEsxvnh7OCBFbRD++PQ3BknPHzqM41iMo0qBA/AHiPxHilz1jyo/ppUBe+Pz4ol/XqbijnySORneNxDf2Xdhcf7SR2rD2NnXxpl5Lp0ugD9dk6aDU6CkNXFgMXSE8msXFsm3mX9DviuHEYNFPupUbvx+R/S3mEA1FhWMX9xL9BaZr9fO1iVBw2t0jy0mnW80njSltZQ6XDR9JZJsaDPkFfiKu6cJCTNWjOiTgqASlCR0Xi/YhyK4lgQly4uhx8gfR4kFJtezmnhqqaOBe7BgIo1Bl5nrPeRQ5k="
+  encryptedClientSecret: "AgC0hDwGpfE5h4YjnsxtmEGIRD9A4eRyKL3O0aYShy3ZRXIPufZ8lQXdf3Neslsa0KpkkIJtuwQjTwDKHVrAA1qW0EWWxBPyAtlWyOYM2xakjmfKtO7EvtfU21hIvJ4zcLp0m/huYmeMPRit2cRwCv3c1/6fdUn6/RRWcEfWtXJBVYeoxIiEYres0VN9S5si/mAh9X0ZZo/JI/LHlrGzpLUoV5dyV7sDm0aT+9IAZTBW+P+X6ixxXeo1FxJVEgN8YdI0BfqMGuzZDZM2wkXiLWX26/gY7g8pAEiIUYoPGjfOK8gAlEyWIIl9d1NNWhEb15PzFsK31bV8MB3IAqmWpj7kQJL9egSoKk60Wy/M/mK64AN1e+yPLS6BkZZRkU9tsKXc1ss5DcTwB8QjtBxHpkTaKAVBFNK0zAoUiv6GgHiS8/nbvz6fHA0q+L2xLPKiiFQYXt5J13GD0GQCR5CKPpvUm5zm+2iRrKc7e+BUn/dR2+MnKZzE8cpzbax+xQCRVXhh2H+uKVBBAlRL0UHXPZHqVImDb2hSm67X5jwVWUzWITu1F1zwkE7NWCLB+NxicJfQw3/Vas0mCVkMVdUK2OAt2aBdHuDJNr1AOvvZ1qwOBwBxjMBkderfsuCunnEORZcQoKcech1PX8JYssp4OXLMzllTU7UnNbur5wjtdwRZd3dSFwAonVTDZyjnTnE5hvbWvpna9m87qbLg+6eFK6Nbu3CWWNWdtq10rPyS8WBQ"
 
 # S3 access for the artifact repository — must match the MinIO root creds.
 artifactSecret:

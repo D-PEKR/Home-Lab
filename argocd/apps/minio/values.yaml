@@ -55,10 +55,10 @@ minio:
   #   3. clientId (öffentlich, kein Geheimnis) direkt eintragen
   #   4. clientSecret direkt eintragen (Repo ist privat — kein kubeseal nötig für MinIO)
   oidc:
-    enabled: false
+    enabled: true
     configUrl: "http://authentik.homeserver/application/o/minio/.well-known/openid-configuration"
-    clientId: ""
-    clientSecret: ""
+    clientId: "2zupJjcziprtxsy10nx4hIZSBsZDQ9JUMlGPRVTk"
+    clientSecret: "x8P2W8L89wRhpUIYRlwSmZiES5pPD9GxfXTkjvUYRSs5h9t90hsxH0dHrh9aJSeiBuaR6cFZFO8oMrv26mSy2r87ZApkOm4MshvJhjw3PIXohdwxJMIy2OxjlzobNC3o"
     redirectUri: "http://minio.homeserver/oauth_callback"
     claimName: "groups"
     displayName: "Authentik"
@@ -73,10 +73,10 @@ minio:
 # native Secret-Referenz für OIDC unterstützt. Credentials oben direkt eintragen.
 # Anleitung: docs/16-sso-alle-dienste.md → Schritt 4 (Hinweis MinIO)
 oidcSecret:
-  enabled: false
+  enabled: true
   name: minio-oidc
-  encryptedClientId: ""
-  encryptedClientSecret: ""
+  encryptedClientId: "AgBihom0zwCtUUWUQkeWKbCvhU0MEvy3bBzzhAK8la4PEyXsltxcy7TrZSO0rxtySRO17EQK5nSkI+6BacPSBE/61hHyFmhh5QCYR1gPAqkqhfbTXdeFwRomycCZ3ActHLWDhFXGgPJY3DOQ9yslZ2CfiUuWS64jzwmkKn8cnjqfECKICyiW0F3GSqzJ4y1R9h7AcB9o+L6/S9UgTCcp9K+y95hQjPHBudfxkPEqhZfDrs6ub3DvqMDB+KwaAuz/i/RB8LcylA4cRJ2CsmTepOmvLrTKAsYhBJuTs+YDqaOJsre8d9/8M/NNKaXnoq/180fsJf+GuQWgZWDgejmO6SQZmrMruejReFFOfCTcBS9g6+tcfT9aO7uozDnG8AN0qzm1iEq4ymJNyIlg5QUPc0DYyd84yi05VB8VxMJO49ukUCdTJow5t0MMTru4XC+vMtQBuIMrKURld4zFtwez013ruuHEm4eJt6JSv6IJ3bVKkGjZWr1LjxNBPXKz9mzBQm2rAMJc+aED9Qr9k17ioVf40DlTJxK3PApASQCcfRGmetDqjLgyVMB2PwhJqHFkjXHvS3pfZvL366croZk5C8MCWiR3beiMXWhEBCbIXJ/ZascWUt8RYJVDI/gvn0Mhi8rCFYR1lFe8AzGRUXfTRUymtzCVbh+pFteBTOL57X2c3m4MjvJwzHTNkwa3M9SQfqJpiu7j5CLPzxSo2H3aOkkqmuKybS0Txz2810o="
+  encryptedClientSecret: "AgC/7vWdKocYZ7r8mRS4fRdMMrLVPkclF1LhyoZBk8B/RfsQxibNq61ibFyjcBJZKHCNnNSfHttgJ3CzoHHTv96HUCPpDMTAph94DwJX1iWRhGxWUhA19PztJo8gs/7UXT3c8UxsyuWQYfaEMuDQdtrnl6r8XswhcLLXeHlI/cX83PFVRu2aKJIoFZVW+jfNejTjzOW3Rbh3RA5YxtRWo7ErUpffTetmBW10KF2nHw22X9u8kFkfxOD2CN9EK9sS4mvpWVFC8EhGDylpCEjuB9AtyiiruXy/R59/N0+UTd+3EKBA0UJ8D4bnSVci3hytopqQOjjBDV18cMvlWJVafpif8kP2DKtXeBpAGgVVpbSyql5tgDDvO2JxuF6q/wp1ctA7hlHUO8cHWKtDhwAxcK6/Yf0ubyVEUBNhg+nJkNaRRD3v2ZA7z7YjMfMfGREJ9wcoGAxGS0SzTb0JhcJ9sbQCzCshd1AfjZuruNVM6E/MCLibfTw1ljUY+14c7F0GIo2+8kONH2cRrJIyAJvzcn8id91r8RzEFINOsvmIfjjI+Gk+k6UznjoGmSCPIPdQ/rk+6mdySxiOwYDv2XWr4c3a0LsiI66crq8AWPuhemhjIjgpGfaMgIZ5H90x5d48hebLi/jaGmZ3px4sJVt02qLlhAH/LxacUiFwxi9KxniISt36LpI7SYW+GmHLHsuJp5EyAYLNUYjgCyx471FXjH9qIATvGpTzCZnkgIlI7AgC"
 
 rootCreds:
   name: minio-root
