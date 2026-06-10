@@ -239,8 +239,8 @@ victoria-metrics-k8s-stack:
         client_secret: "$__env{GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}"
         scopes: "openid email profile"
         auth_url: "http://authentik.homeserver/application/o/authorize/"
-        token_url: "http://authentik.homeserver/application/o/token/"
-        api_url: "http://authentik.homeserver/application/o/userinfo/"
+        token_url: "http://authentik-server.authentik.svc.cluster.local/application/o/token/"
+        api_url: "http://authentik-server.authentik.svc.cluster.local/application/o/userinfo/"
         groups_attribute_path: "groups"
         role_attribute_path: "contains(groups[*], 'authentik Admins') && 'Admin' || 'Viewer'"
 
