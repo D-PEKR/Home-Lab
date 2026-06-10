@@ -1,8 +1,9 @@
-# 15 — Zertifikats-Authentifizierung mit Authentik
+# 15 — Zertifikats-Authentifizierung via Traefik mTLS
 
-Passwortloses Login für alle Home-Lab-Dienste über Client-Zertifikate. Authentik
-validiert das Browser-Zertifikat statt eines Passworts; alle verbundenen Apps
-(OIDC oder Forward Auth) profitieren automatisch über SSO.
+Client-Zertifikate als Zugangsschutz für alle Home-Lab-Dienste. Traefik prüft das
+Browser-Zertifikat direkt gegen die eigene CA — kein Authentik Enterprise-Feature
+nötig. Nur Geräte mit gültigem Zertifikat können die Dienste überhaupt erreichen;
+Authentik übernimmt weiterhin Identität und SSO.
 
 ---
 
@@ -11,17 +12,23 @@ validiert das Browser-Zertifikat statt eines Passworts; alle verbundenen Apps
 ```
 Browser (Client-Zertifikat installiert)
     │
-    │  HTTPS + mTLS
+    │  HTTPS + mTLS (TLS-Handshake)
     ▼
-Traefik (websecure, PassTLSClientCert)
-    │  Header: ssl-client-cert: <PEM>
+Traefik (TLSOption: RequireAndVerifyClientCert → Home-Lab-CA)
+    │  Ungültiges / fehlendes Zert → 400 Bad Request, kein Request weiter
     ▼
-Authentik (Certificate Stage)
-    │  OIDC-Token / Session
+Authentik (Login: Benutzername + Passwort / TOTP wie bisher)
+    │  OIDC-Token / Session / ForwardAuth
     ▼
 Grafana · Headlamp · Argo Workflows · MinIO   ← OIDC
 Gotify  · Semaphore                           ← Forward Auth
 ```
+
+**Was das Zertifikat tut:** Netzwerk-Zugangskontrolle — nur Geräte mit
+CA-signiertem Zertifikat können die Dienste überhaupt kontaktieren.
+
+**Was das Zertifikat NICHT tut:** Es ersetzt nicht den Authentik-Login.
+Benutzername + Passwort (oder TOTP) bleibt der Identity-Schritt.
 
 | Dienst | Typ | Status |
 |---|---|---|
@@ -37,8 +44,25 @@ Gotify  · Semaphore                           ← Forward Auth
 ## Voraussetzungen
 
 - Authentik läuft im Cluster (`kubectl -n authentik get pods`)
-- `kubeseal` ist lokal installiert und zeigt auf den Cluster
+- `kubeseal` ist lokal installiert
 - `openssl` ist lokal installiert
+- Public Key des Sealed-Secrets-Controllers liegt lokal vor (siehe Hinweis unten)
+
+### kubeseal ohne lokalen Cluster-Kontext
+
+Da dein lokales kubeconfig nicht auf den Home-Server zeigt, Public Key einmalig
+vom Server holen und für alle `kubeseal`-Befehle verwenden:
+
+```bash
+ssh -i ~/.ssh/id_ed25519 ubuntu@192.168.178.94 \
+  'sudo kubectl -n sealed-secrets get secret \
+   -l sealedsecrets.bitnami.com/sealed-secrets-key=active \
+   -o jsonpath="{.items[0].data.tls\.crt}" | base64 -d' \
+  > ~/homelab-certs/sealed-secrets.pem
+```
+
+Alle `kubeseal`-Befehle in dieser Anleitung nutzen `--cert ~/homelab-certs/sealed-secrets.pem`
+statt einer Live-Verbindung zum Controller.
 
 ---
 
@@ -47,10 +71,8 @@ Gotify  · Semaphore                           ← Forward Auth
 ### 1.1 — CA (Certification Authority) anlegen
 
 ```bash
-# Verzeichnis anlegen
 mkdir -p ~/homelab-certs && cd ~/homelab-certs
 
-# CA-Key + selbstsigniertes Zertifikat
 openssl req -x509 -newkey rsa:4096 -days 3650 \
   -keyout ca.key -out ca.crt \
   -subj "/CN=Home-Lab-CA/O=HomeLab" \
@@ -62,18 +84,16 @@ openssl req -x509 -newkey rsa:4096 -days 3650 \
 ```bash
 cd ~/homelab-certs
 
-# Key + Certificate Signing Request
 openssl req -newkey rsa:4096 -days 3650 \
   -keyout client.key -out client.csr \
   -subj "/CN=admin/O=HomeLab/emailAddress=admin@homeserver.local" \
   -nodes
 
-# CA signiert das Client-Zertifikat
 openssl x509 -req -days 3650 \
   -in client.csr -CA ca.crt -CAkey ca.key \
   -CAcreateserial -out client.crt
 
-# PKCS12-Bundle für den Browser (wird mit Passwort geschützt)
+# PKCS12-Bundle für den Browser
 openssl pkcs12 -export \
   -in client.crt -inkey client.key \
   -out client.p12 \
@@ -85,7 +105,6 @@ openssl pkcs12 -export \
 ```bash
 cd ~/homelab-certs
 
-# Config-Datei für SAN
 cat > server.cnf <<EOF
 [req]
 distinguished_name = req_distinguished_name
@@ -99,7 +118,6 @@ CN = authentik.homeserver
 subjectAltName = DNS:authentik.homeserver
 EOF
 
-# Key + CSR + CA-signiertes Server-Zert
 openssl req -newkey rsa:2048 -days 3650 \
   -keyout server.key -out server.csr \
   -nodes -config server.cnf
@@ -112,27 +130,27 @@ openssl x509 -req -days 3650 \
 
 ---
 
-## Schritt 2 — TLS-Secret für Traefik versiegeln
+## Schritt 2 — Secrets versiegeln
+
+### 2.1 — Server-TLS für Authentik
 
 ```bash
 NAMESPACE=authentik
 SECRET_NAME=authentik-tls
 
 seal_file() {
-  cat "$1" | kubeseal --raw \
+  kubeseal --raw \
     --namespace "$NAMESPACE" \
     --name "$SECRET_NAME" \
-    --controller-namespace sealed-secrets \
-    --controller-name sealed-secrets-controller \
-    --from-file=/dev/stdin
+    --cert ~/homelab-certs/sealed-secrets.pem \
+    --from-file=/dev/stdin < "$1"
 }
 
-echo "tls.crt: $(cat ~/homelab-certs/server.crt | seal_file /dev/stdin)"
-echo "tls.key: $(cat ~/homelab-certs/server.key | seal_file /dev/stdin)"
+echo "tls.crt: $(seal_file ~/homelab-certs/server.crt)"
+echo "tls.key: $(seal_file ~/homelab-certs/server.key)"
 ```
 
-Die Ausgabe (zwei lange Base64-Blobs) in
-`argocd/apps/authentik/values.yaml` eintragen:
+Ausgabe in `argocd/apps/authentik/values.yaml` eintragen:
 
 ```yaml
 tls:
@@ -141,72 +159,114 @@ tls:
   encryptedKey: "<AUSGABE tls.key>"
 ```
 
----
+### 2.2 — CA-Zertifikat für Traefik
 
-## Schritt 3 — CA in Authentik importieren
-
-1. Öffne **http://authentik.homeserver/if/admin/**
-2. **System → Certificates → Importieren**
-3. Name: `Home-Lab-CA`
-4. Certificate Data: Inhalt von `~/homelab-certs/ca.crt` einfügen
-5. Private Key: **leer lassen** (nur der öffentliche Teil wird benötigt)
-6. Speichern.
-
----
-
-## Schritt 4 — Certificate Stage in Authentik erstellen
-
-1. **Flows & Stages → Stages → Erstellen → Certificate Stage**
-2. Werte:
-   - Name: `certificate-stage`
-   - Mode: `Certificate-based authentication`
-   - Client Certificate Authority: `Home-Lab-CA` (aus Schritt 3)
-3. Speichern.
-
----
-
-## Schritt 5 — Authentik Authentication-Flow anpassen
-
-Du hast zwei Möglichkeiten:
-
-### Option A — Zertifikat als einzige Methode (empfohlen)
-
-1. **Flows & Stages → Flows → default-authentication-flow bearbeiten**
-2. Stage Bindings: Den `password`-Stage durch `certificate-stage` ersetzen.
-3. Reihenfolge der Stages:
-   ```
-   1. identification-stage   (Benutzername eingeben)
-   2. certificate-stage      (Browser-Zertifikat prüfen)
-   ```
-
-### Option B — Zertifikat als zusätzlicher Faktor (MFA)
-
-1. Behalte `password-stage` als Schritt 2.
-2. Füge `certificate-stage` als Schritt 3 hinzu.
-
----
-
-## Schritt 6 — Traefik für mTLS konfigurieren
-
-Die notwendigen Kubernetes-Ressourcen werden mit dem PR
-**feat/authentik-cert-login** deployed:
-
-- **TLSOption** `authentik-mtls` — fordert Client-Zertifikat beim TLS-Handshake an
-- **Middleware** `authentik-passtls` — leitet das Zertifikat als Header weiter
-- **Middleware** `authentik-forwardauth` — ForwardAuth für Gotify/Semaphore
-- **SealedSecret** `authentik-tls` — Server-Zertifikat (muss aus Schritt 2 befüllt werden)
-
-Nach dem Merge (und nachdem die Secrets aus Schritt 2 eingepflegt sind):
+Traefik braucht die CA als Kubernetes Secret, um Client-Zertifikate zu verifizieren.
+Das Secret muss im selben Namespace wie die TLSOption liegen (`kube-system`).
 
 ```bash
-# Prüfen ob die Ressourcen deployed wurden
-ssh ubuntu@192.168.178.94 \
-  'sudo kubectl -n authentik get middleware,tlsoption,sealedsecret'
+NAMESPACE=kube-system
+SECRET_NAME=homelab-ca
+
+echo "tls.ca: $(kubeseal --raw \
+  --namespace "$NAMESPACE" \
+  --name "$SECRET_NAME" \
+  --cert ~/homelab-certs/sealed-secrets.pem \
+  --from-file=/dev/stdin < ~/homelab-certs/ca.crt)"
+```
+
+Den ausgegebenen Blob in `argocd/apps/traefik-mtls/sealedsecret-ca.yaml` eintragen:
+
+```yaml
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: homelab-ca
+  namespace: kube-system
+spec:
+  encryptedData:
+    tls.ca: "<AUSGABE tls.ca>"
+  template:
+    metadata:
+      name: homelab-ca
+      namespace: kube-system
+    type: Opaque
 ```
 
 ---
 
-## Schritt 7 — CA & Client-Zertifikat im Browser installieren
+## Schritt 3 — Traefik TLSOption deployen
+
+Erstelle `argocd/apps/traefik-mtls/` mit folgenden Dateien:
+
+### tlsoption.yaml
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: mtls-homelab
+  namespace: kube-system
+spec:
+  minVersion: VersionTLS12
+  clientAuth:
+    secretNames:
+      - homelab-ca          # Secret aus Schritt 2.2
+    clientAuthType: RequireAndVerifyClientCert
+```
+
+### kustomization.yaml
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - sealedsecret-ca.yaml
+  - tlsoption.yaml
+```
+
+Nach dem Commit und ArgoCD-Sync prüfen:
+
+```bash
+ssh ubuntu@192.168.178.94 \
+  'sudo kubectl -n kube-system get tlsoption mtls-homelab && \
+   sudo kubectl -n kube-system get secret homelab-ca'
+```
+
+---
+
+## Schritt 4 — IngressRoutes auf mTLS umstellen
+
+Für jeden Dienst muss die IngressRoute die TLSOption referenzieren.
+Beispiel für Authentik (`argocd/apps/authentik/ingressroute.yaml`):
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: authentik
+  namespace: authentik
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`authentik.homeserver`)
+      kind: Rule
+      services:
+        - name: authentik
+          port: 9000
+  tls:
+    options:
+      name: mtls-homelab
+      namespace: kube-system    # TLSOption liegt in kube-system
+```
+
+Das gleiche `tls.options`-Block für alle anderen IngressRoutes ergänzen:
+Grafana, Headlamp, Argo Workflows, MinIO, Gotify, Semaphore.
+
+---
+
+## Schritt 5 — CA & Client-Zertifikat im Browser installieren
 
 ### CA-Zertifikat (einmalig, systemweit)
 
@@ -238,12 +298,12 @@ Settings → Privacy & Security → View Certificates → Your Certificates → 
 
 ---
 
-## Schritt 8 — Pro App verbinden
+## Schritt 6 — Pro App verbinden
 
 ### Grafana ✅ (bereits konfiguriert)
 
-Keine Änderung nötig. Grafana leitet automatisch zu Authentik weiter.
-Nach dem Cert-Login bei Authentik ist Grafana direkt zugänglich.
+Keine Änderung nötig. Nach Cert-Check durch Traefik leitet Grafana automatisch
+zu Authentik weiter.
 
 ---
 
@@ -251,7 +311,7 @@ Nach dem Cert-Login bei Authentik ist Grafana direkt zugänglich.
 
 Voraussetzung: PR **feat/headlamp-oidc** gemergt.
 
-#### 8.1 — Provider in Authentik anlegen
+#### 6.1 — Provider in Authentik anlegen
 
 1. **Applications → Providers → Erstellen → OAuth2/OpenID Provider**
    - Name: `Headlamp`
@@ -259,17 +319,15 @@ Voraussetzung: PR **feat/headlamp-oidc** gemergt.
    - Redirect URI: `http://headlamp.homeserver/oidc-callback`
    - Scopes: `openid`, `email`, `profile`, `groups`
 2. Notiere `Client ID` und `Client Secret`.
-3. **Applications → Erstellen:**
-   - Name: `Headlamp`, Provider: `Headlamp`
+3. **Applications → Erstellen:** Name `Headlamp`, Provider `Headlamp`
 
-#### 8.2 — Secret versiegeln
+#### 6.2 — Secret versiegeln
 
 ```bash
 seal() {
   echo -n "$1" | kubeseal --raw \
     --namespace headlamp --name headlamp-oidc \
-    --controller-namespace sealed-secrets \
-    --controller-name sealed-secrets-controller
+    --cert ~/homelab-certs/sealed-secrets.pem
 }
 
 echo "clientId:     $(seal '<DEINE_CLIENT_ID>')"
@@ -285,7 +343,7 @@ Ausgabe in `argocd/apps/headlamp/templates/oidc-sealedsecret.yaml` eintragen
 
 Voraussetzung: PR **feat/argo-workflows-sso** gemergt.
 
-#### 8.3 — Provider anlegen
+#### 6.3 — Provider anlegen
 
 1. **Providers → OAuth2/OpenID Provider:**
    - Name: `Argo Workflows`
@@ -293,14 +351,13 @@ Voraussetzung: PR **feat/argo-workflows-sso** gemergt.
    - Scopes: `openid`, `email`, `profile`, `groups`
 2. **Applications → Erstellen:** Name `Argo Workflows`.
 
-#### 8.4 — Secret versiegeln
+#### 6.4 — Secret versiegeln
 
 ```bash
 seal() {
   echo -n "$1" | kubeseal --raw \
     --namespace argo-workflows --name argo-workflows-sso \
-    --controller-namespace sealed-secrets \
-    --controller-name sealed-secrets-controller
+    --cert ~/homelab-certs/sealed-secrets.pem
 }
 
 echo "clientId:     $(seal '<CLIENT_ID>')"
@@ -315,7 +372,7 @@ Ausgabe in `argocd/apps/argo-workflows/templates/sso-sealedsecret.yaml` eintrage
 
 Voraussetzung: PR **feat/minio-oidc** gemergt.
 
-#### 8.5 — Provider anlegen
+#### 6.5 — Provider anlegen
 
 1. **Providers → OAuth2/OpenID Provider:**
    - Name: `MinIO`
@@ -323,14 +380,13 @@ Voraussetzung: PR **feat/minio-oidc** gemergt.
    - Scopes: `openid`, `email`, `profile`, `groups`
 2. **Applications → Erstellen:** Name `MinIO`.
 
-#### 8.6 — Secret versiegeln
+#### 6.6 — Secret versiegeln
 
 ```bash
 seal() {
   echo -n "$1" | kubeseal --raw \
     --namespace minio --name minio-oidc \
-    --controller-namespace sealed-secrets \
-    --controller-name sealed-secrets-controller
+    --cert ~/homelab-certs/sealed-secrets.pem
 }
 
 echo "clientId:     $(seal '<CLIENT_ID>')"
@@ -345,7 +401,7 @@ Ausgabe in `argocd/apps/minio/templates/oidc-sealedsecret.yaml` eintragen.
 
 Voraussetzung: PR **feat/gotify-forwardauth** gemergt.
 
-#### 8.7 — Forward-Auth-Provider anlegen
+#### 6.7 — Forward-Auth-Provider anlegen
 
 1. **Providers → Erstellen → Proxy Provider**
    - Name: `Gotify`
@@ -353,15 +409,13 @@ Voraussetzung: PR **feat/gotify-forwardauth** gemergt.
    - External Host: `http://gotify.homeserver`
 2. **Applications → Erstellen:** Name `Gotify`, Provider `Gotify`.
 
-Nach dem Merge: Gotify ist automatisch durch Authentik geschützt.
-
 ---
 
 ### Semaphore
 
 Voraussetzung: PR **feat/semaphore-forwardauth** gemergt.
 
-#### 8.8 — Forward-Auth-Provider anlegen
+#### 6.8 — Forward-Auth-Provider anlegen
 
 1. **Providers → Erstellen → Proxy Provider**
    - Name: `Semaphore`
@@ -373,18 +427,14 @@ Voraussetzung: PR **feat/semaphore-forwardauth** gemergt.
 
 ### ArgoCD (manuell, nicht via GitOps)
 
-ArgoCD wird per Ansible bootstrapped und ist nicht als ArgoCD-App verwaltet.
-OIDC muss daher direkt als ConfigMap angewendet werden.
-
-#### 8.9 — Provider anlegen
+#### 6.9 — Provider anlegen
 
 - Redirect URI: `http://192.168.178.94:30080/auth/callback`
 - Scopes: `openid`, `email`, `profile`, `groups`
 
-#### 8.10 — argocd-cm & argocd-secret patchen
+#### 6.10 — argocd-cm & argocd-secret patchen
 
 ```bash
-# Client-Secret als Kubernetes-Secret anlegen (VERSCHLÜSSELN!)
 kubectl -n argocd create secret generic argocd-secret \
   --from-literal=oidc.authentik.clientSecret='<CLIENT_SECRET>' \
   --dry-run=client -o yaml | \
@@ -392,7 +442,6 @@ kubectl -n argocd create secret generic argocd-secret \
            --controller-name sealed-secrets-controller -o yaml \
   | kubectl apply -f -
 
-# argocd-cm mit OIDC-Konfiguration patchen
 kubectl -n argocd apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
@@ -426,21 +475,26 @@ EOF
 
 ---
 
-## Schritt 9 — Testen
+## Schritt 7 — Testen
 
 ```bash
-# 1. Authentik erreichbar (jetzt HTTPS)
-curl -k https://authentik.homeserver/if/flow/default-authentication-flow/
-
-# 2. Prüfen ob Middleware deployed
+# 1. TLSOption und CA-Secret deployed
 ssh ubuntu@192.168.178.94 \
-  'sudo kubectl -n authentik get middleware'
+  'sudo kubectl -n kube-system get tlsoption mtls-homelab && \
+   sudo kubectl -n kube-system get secret homelab-ca'
 
-# 3. Grafana öffnen → Browser fragt nach Zertifikat → automatisch eingeloggt
+# 2. Zugriff mit Client-Zertifikat funktioniert
+curl --cert ~/homelab-certs/client.crt \
+     --key  ~/homelab-certs/client.key \
+     --cacert ~/homelab-certs/ca.crt \
+     https://authentik.homeserver/if/flow/default-authentication-flow/
+
+# 3. Zugriff OHNE Zertifikat wird abgelehnt (muss 400 zurückgeben)
+curl --cacert ~/homelab-certs/ca.crt \
+     https://authentik.homeserver/  # erwartet: 400 Bad Request
+
+# 4. Browser: Grafana öffnen → Browser fragt nach Zertifikat → Authentik-Login
 open http://grafana.homeserver
-
-# 4. Gotify öffnen → Weiterleitung zu Authentik → Cert-Login → Gotify
-open http://gotify.homeserver
 ```
 
 ---
@@ -449,20 +503,38 @@ open http://gotify.homeserver
 
 ### Browser fragt nicht nach Zertifikat
 
-- CA und Client-Zertifikat in den Browser-Trust-Store importiert? (→ Schritt 7)
-- Authentik wirklich über HTTPS erreichbar (`https://authentik.homeserver`)?
-- TLSOption deployed? `kubectl -n authentik get tlsoption`
+- CA und Client-Zertifikat im Browser-Trust-Store? (→ Schritt 5)
+- TLSOption deployed? `kubectl -n kube-system get tlsoption mtls-homelab`
+- IngressRoute referenziert die TLSOption? (`tls.options.name: mtls-homelab`)
 
-### `ssl-client-cert` Header fehlt in Authentik
+### 400 Bad Request ohne Fehlermeldung
 
-- PassTLSClientCert-Middleware an der Route aktiv?
-- Traefik-Logs prüfen: `kubectl -n kube-system logs -l app.kubernetes.io/name=traefik`
+Traefik hat den mTLS-Handshake abgelehnt — Browser hat kein oder ein ungültiges
+Zertifikat gesendet. Client-Zertifikat korrekt im Browser importiert?
 
-### Certificate Stage sagt "invalid certificate"
+### CA-Secret fehlt / TLSOption ignoriert Client-Certs
 
-- CA in Authentik korrekt importiert? (`System → Certificates`)
-- Client-Zertifikat mit der richtigen CA signiert?
-- Ablaufdatum prüfen: `openssl x509 -in ~/homelab-certs/client.crt -noout -dates`
+```bash
+# Secret-Inhalt prüfen
+ssh ubuntu@192.168.178.94 \
+  'sudo kubectl -n kube-system get secret homelab-ca -o jsonpath="{.data.tls\.ca}" \
+   | base64 -d | openssl x509 -noout -subject'
+```
+
+Muss `/CN=Home-Lab-CA/O=HomeLab` ausgeben.
+
+### Traefik-Logs zeigen TLS-Fehler
+
+```bash
+ssh ubuntu@192.168.178.94 \
+  'sudo kubectl -n kube-system logs -l app.kubernetes.io/name=traefik --tail=50'
+```
+
+### Client-Zertifikat abgelaufen
+
+```bash
+openssl x509 -in ~/homelab-certs/client.crt -noout -dates
+```
 
 ### Gotify/Semaphore zeigt leere Seite nach Login
 
@@ -474,6 +546,6 @@ open http://gotify.homeserver
 
 ## Weiterführende Links
 
-- [Authentik Certificate Stage Docs](https://docs.goauthentik.io/docs/flow/stages/identification/)
-- [Traefik PassTLSClientCert](https://doc.traefik.io/traefik/middlewares/http/passtlsclientcert/)
-- [Traefik TLSOptions](https://doc.traefik.io/traefik/https/tls/#tls-options)
+- [Traefik TLSOptions Docs](https://doc.traefik.io/traefik/https/tls/#tls-options)
+- [Traefik mTLS / Client Authentication](https://doc.traefik.io/traefik/https/tls/#client-authentication-mtls)
+- [Kubernetes SealedSecrets](https://github.com/bitnami-labs/sealed-secrets)
