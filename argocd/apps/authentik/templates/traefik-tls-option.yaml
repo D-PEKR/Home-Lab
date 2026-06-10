@@ -1,0 +1,13 @@
+---
+# TLSOption für Authentik: fordert beim TLS-Handshake ein Client-Zertifikat an
+# (RequestClientCert = optional, kein Fehler wenn kein Cert vorhanden).
+# Referenziert per Ingress-Annotation:
+#   traefik.ingress.kubernetes.io/router.tls.options: authentik-authentik-mtls@kubernetescrd
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: authentik-mtls
+  namespace: authentik
+spec:
+  clientAuth:
+    clientAuthType: RequestClientCert

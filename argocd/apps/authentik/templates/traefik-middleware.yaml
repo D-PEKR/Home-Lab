@@ -1,0 +1,38 @@
+---
+# ForwardAuth-Middleware: schützt Dienste ohne native OIDC-Unterstützung
+# (Gotify, Semaphore). Traefik leitet unauthentifizierte Requests zum
+# Authentik Embedded Outpost weiter.
+# Middleware-Referenz: authentik-authentik-forwardauth@kubernetescrd
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: authentik-forwardauth
+  namespace: authentik
+spec:
+  forwardAuth:
+    address: "http://authentik-server.authentik.svc.cluster.local/outpost.goauthentik.io/auth/traefik"
+    trustForwardHeader: true
+    authResponseHeaders:
+      - X-authentik-username
+      - X-authentik-groups
+      - X-authentik-email
+      - X-authentik-name
+      - X-authentik-uid
+      - X-authentik-jwt
+      - X-authentik-meta-jwks
+      - X-authentik-meta-outpost
+      - X-authentik-meta-provider
+      - X-authentik-meta-app
+      - X-authentik-meta-version
+---
+# PassTLSClientCert-Middleware: übergibt das Browser-Zertifikat als Header
+# an Authentik (wird vom Certificate Stage ausgelesen).
+# Middleware-Referenz: authentik-authentik-passtls@kubernetescrd
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: authentik-passtls
+  namespace: authentik
+spec:
+  passTLSClientCert:
+    pem: true
