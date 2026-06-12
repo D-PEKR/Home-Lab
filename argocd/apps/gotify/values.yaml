@@ -50,6 +50,12 @@ ingress:
           pathType: Prefix
   tls: []
 
+# Zweiter Ingress ohne ForwardAuth für native App-Zugriff (z.B. iGotify iOS).
+# gotify-api.homeserver wird vom *.homeserver-Wildcard automatisch aufgelöst.
+ingressApi:
+  enabled: true
+  host: gotify-api.homeserver
+
 persistence:
   enabled: true
   storageClassName: local-path
