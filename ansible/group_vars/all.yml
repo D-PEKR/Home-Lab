@@ -36,7 +36,7 @@ k3s_service_cidr: "10.43.0.0/16"
 #   Auslesen: kubectl -n headlamp get secret headlamp-oidc \
 #             -o jsonpath="{.data.OIDC_CLIENT_ID}" | base64 -d
 # Leer lassen → OIDC nicht konfigurieren.
-k3s_oidc_client_id: ""
+k3s_oidc_client_id: "ZYuTGSngBseO2KFco8WqCgV2Vdpij7c6Ip1CKXHC"
 # Pfad zur CA-Zertifikatsdatei auf dem Ansible-Controller (wird auf den Server kopiert).
 k3s_oidc_ca_cert_local: "{{ lookup('env', 'HOME') }}/homelab-certs/ca.crt"
 
