@@ -32,7 +32,7 @@ headlamp:
   # vom Chart-Schema; die Args werden vom Chart via externalSecret ergänzt).
   env:
     - name: OIDC_ISSUER_URL
-      value: "http://authentik.homeserver/application/o/headlamp/"
+      value: "https://authentik.homeserver/application/o/headlamp/"
     - name: OIDC_SCOPES
       value: "openid email profile groups offline_access"
 

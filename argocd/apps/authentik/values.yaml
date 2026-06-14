@@ -27,7 +27,7 @@ credentials:
 # tls.enabled auf true setzen.
 # ============================================================
 tls:
-  enabled: false
+  enabled: true
   secretName: authentik-tls
   # Versiegelte Werte für tls.crt und tls.key — NIEMALS Klartext!
   encryptedCrt: "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"
@@ -76,6 +76,8 @@ authentik:
           secretKeyRef:
             name: authentik-credentials
             key: bootstrap_email
+      - name: AUTHENTIK_TRUST_PROXY_HEADERS
+        value: "true"
 
   # ---- Server (Web-UI + API) ------------------------------
   server:
