@@ -21,7 +21,7 @@
 
 ```bash
 # 1) Repo klonen
-git clone https://github.com/D-PEKR/Home-Lab.git && cd Home-Lab
+git clone https://github.com/PKE-Tech/capulus-core.git && cd capulus-core
 
 # 2) Eigene Details eintragen (Server-IP, Repo-URL, Tailscale-Key)
 $EDITOR ansible/inventory/hosts.yml
@@ -79,8 +79,8 @@ Für reproduzierbare Builds `auto_upgrade: false` in `ansible/group_vars/all.yml
 **1. Repo klonen**
 
 ```bash
-git clone https://github.com/D-PEKR/Home-Lab.git
-cd Home-Lab
+git clone https://github.com/PKE-Tech/capulus-core.git
+cd capulus-core
 ```
 
 **2. Inventory auf den eigenen Server zeigen lassen**

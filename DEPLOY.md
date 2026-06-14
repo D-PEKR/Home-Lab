@@ -45,8 +45,8 @@ ansible -i ansible/inventory/hosts.yml all -m ping
 ## Schritt 1 — Repo klonen & Abhängigkeiten installieren
 
 ```bash
-git clone https://github.com/D-PEKR/Home-Lab.git
-cd Home-Lab
+git clone https://github.com/PKE-Tech/capulus-core.git
+cd capulus-core
 make deps
 ```
 
