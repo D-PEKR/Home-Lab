@@ -50,6 +50,20 @@ ingress:
           pathType: Prefix
   tls: []
 
+# Second ingress for the iOS app (iGotify). No Authentik middleware —
+# the app authenticates itself via API token. Resolves automatically via
+# the dnsmasq wildcard (address=/homeserver/...).
+ingressApi:
+  enabled: true
+  className: traefik
+  annotations: {}
+  hosts:
+    - host: gotify-api.homeserver
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
 persistence:
   enabled: true
   storageClassName: local-path
