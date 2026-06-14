@@ -13,6 +13,10 @@ headlamp:
         paths:
           - path: /
             type: Prefix
+      - host: headlamp.pke-lab.de
+        paths:
+          - path: /
+            type: Prefix
     tls: []
 
   # ---- OIDC — Authentik Single Sign-On -------------------------
@@ -30,7 +34,7 @@ headlamp:
   # vom Chart-Schema; die Args werden vom Chart via externalSecret ergänzt).
   env:
     - name: OIDC_ISSUER_URL
-      value: "http://authentik.homeserver/application/o/headlamp/"
+      value: "https://authentik.pke-lab.de/application/o/headlamp/"
     - name: OIDC_SCOPES
       value: "openid email profile groups"
 

@@ -39,14 +39,14 @@ argo-workflows:
     secure: false
     sso:
       enabled: true
-      issuer: "http://authentik.homeserver/application/o/argo-workflows/"
+      issuer: "https://authentik.pke-lab.de/application/o/argo-workflows/"
       clientId:
         name: argo-workflows-sso
         key: clientId
       clientSecret:
         name: argo-workflows-sso
         key: clientSecret
-      redirectUrl: "http://argo-workflows.homeserver/oauth2/callback"
+      redirectUrl: "https://argo-workflows.pke-lab.de/oauth2/callback"
       scopes:
         - openid
         - profile
@@ -66,6 +66,7 @@ argo-workflows:
       ingressClassName: traefik
       hosts:
         - argo-workflows.homeserver
+        - argo-workflows.pke-lab.de
       paths:
         - /
       pathType: Prefix

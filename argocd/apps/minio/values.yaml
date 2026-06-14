@@ -42,6 +42,7 @@ minio:
     path: /
     hosts:
       - minio.homeserver
+      - minio.pke-lab.de
 
   # S3 API ingress not needed — Argo reaches MinIO over the cluster Service.
   ingress:
@@ -56,10 +57,10 @@ minio:
   #   4. clientSecret direkt eintragen (Repo ist privat — kein kubeseal nötig für MinIO)
   oidc:
     enabled: true
-    configUrl: "http://authentik.homeserver/application/o/minio/.well-known/openid-configuration"
+    configUrl: "https://authentik.pke-lab.de/application/o/minio/.well-known/openid-configuration"
     clientId: "2zupJjcziprtxsy10nx4hIZSBsZDQ9JUMlGPRVTk"
     clientSecret: "x8P2W8L89wRhpUIYRlwSmZiES5pPD9GxfXTkjvUYRSs5h9t90hsxH0dHrh9aJSeiBuaR6cFZFO8oMrv26mSy2r87ZApkOm4MshvJhjw3PIXohdwxJMIy2OxjlzobNC3o"
-    redirectUri: "http://minio.homeserver/oauth_callback"
+    redirectUri: "https://minio.pke-lab.de/oauth_callback"
     claimName: "groups"
     displayName: "Authentik"
 

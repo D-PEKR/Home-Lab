@@ -1,0 +1,31 @@
+---
+# cloudflared image — pin to a concrete tag and bump via Renovate.
+image:
+  repository: cloudflare/cloudflared
+  tag: "2025.5.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+# Tunnel token is stored as a SealedSecret.
+# Seal with:
+#   echo -n '<tunnel-token>' | kubeseal --raw \
+#     --namespace cloudflare-tunnel \
+#     --name cloudflare-tunnel-secret \
+#     --cert ~/homelab-certs/sealed-secrets.pem
+tunnelSecret:
+  name: cloudflare-tunnel-secret
+  encryptedToken: >-
+    AgBpEOgnA7yZmSunnbe6A1Y3WG8I0ouSV6M86YQCvTBE/V7OdgCbJgvGbvH0eP4qtxA8GVM3/QeJuKY+Hqd9/Nu7+EXuleVw64cPiFEC3uZuoAboCmnY4wkZuIfggfECS+GhWzt3kyyMOhngVA6Ys38bUnWCt6zyFOjjB+P8HypXzj9VaF8khZ24t90wEZZPzFYbVFoAOT/LQixBDDIFdBiQ/UJMvJVSQGg+k22oneuD1wcndgMtH79UO7AL9fKfjyRis5CQhpkkVteGi893ls80w6baHYxOd6qt432jtaI2APPdAdYc9pKzcEECkiHgSfN0vdjT6LRbDTxN5RXbCICsnXmSOtRkG7KfCOQbq2Sojujy8RcZ7xtcey8L4dgCoGqNiAlTECKWqYBhA9gOquCIYozf/p0vuU8RAEM0DEQ6aoPhBu9dGxvClfUetphIYmEW8NPkxM73avwzI2IpzRMee1CX0gj6vtpVk8LSytf7X7xTbtEiIumnDyHAhDqQyplcPGsXZabITAAJjRDMCMKfZ6aFNwbDZZlzSBvshItsAssWjviA8MLmNP2D4yFCYyZSk4lRXU8MhjUbzh1g1y6T3VNZ5V+nNGy1tYGK6ns1S5/X7ZIBkKq0F+SxEets72S9KJ/p7KHBGBFEyka0flvtVAXCAv2u7KiwGjV0a+wQ2/FoifJ5qLhUSfJlPZuJStJLhHdt/bjzAGjE7ZIHd3fTuDrQDHbh5WGR+GyqAfNxsZtcdww=
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -98,6 +98,7 @@ authentik:
         # traefik.ingress.kubernetes.io/router.middlewares: authentik-authentik-passtls@kubernetescrd
       hosts:
         - authentik.homeserver
+        - authentik.pke-lab.de
       paths:
         - "/"
       pathType: Prefix

@@ -48,6 +48,10 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
+    - host: gotify.pke-lab.de
+      paths:
+        - path: /
+          pathType: Prefix
   tls: []
 
 # Zweiter Ingress ohne ForwardAuth für native App-Zugriff (z.B. iGotify iOS).

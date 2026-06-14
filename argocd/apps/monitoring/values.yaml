@@ -237,6 +237,7 @@ victoria-metrics-k8s-stack:
       pathType: Prefix
       hosts:
         - grafana.homeserver
+        - grafana.pke-lab.de
       tls: []
 
     # Grafana itself is scraped by VMAgent.
@@ -245,8 +246,8 @@ victoria-metrics-k8s-stack:
 
     grafana.ini:
       server:
-        domain: grafana.homeserver
-        root_url: "http://grafana.homeserver"
+        domain: grafana.pke-lab.de
+        root_url: "https://grafana.pke-lab.de"
       auth.generic_oauth:
         enabled: true
         name: "Authentik"
@@ -256,7 +257,7 @@ victoria-metrics-k8s-stack:
         client_id: "TP7bdPbe2ozhgzmScJ73UhJVJXeGCyOSHTGcxfpB"
         client_secret: "$__env{GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}"
         scopes: "openid email profile"
-        auth_url: "http://authentik.homeserver/application/o/authorize/"
+        auth_url: "https://authentik.pke-lab.de/application/o/authorize/"
         token_url: "http://authentik-server.authentik.svc.cluster.local/application/o/token/"
         api_url: "http://authentik-server.authentik.svc.cluster.local/application/o/userinfo/"
         groups_attribute_path: "groups"

@@ -45,6 +45,10 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
+    - host: ntfy.pke-lab.de
+      paths:
+        - path: /
+          pathType: Prefix
   tls: []
 
 persistence:
@@ -58,7 +62,7 @@ persistence:
 # upstream-base-url enables iOS push via ntfy.sh's APNs relay.
 # Set base-url to the public-facing URL so the iOS app can subscribe correctly.
 config:
-  base-url: "http://ntfy.homeserver"
+  base-url: "https://ntfy.pke-lab.de"
   upstream-base-url: "https://ntfy.sh"
   behind-proxy: true
   cache-file: /var/lib/ntfy/cache.db

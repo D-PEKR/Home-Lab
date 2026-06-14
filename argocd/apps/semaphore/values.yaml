@@ -46,6 +46,10 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
+    - host: semaphore.pke-lab.de
+      paths:
+        - path: /
+          pathType: Prefix
   tls: []
 
 resources:

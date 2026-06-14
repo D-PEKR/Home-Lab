@@ -50,6 +50,7 @@ Am Ende druckt das Playbook die ArgoCD-URL und das Admin-Passwort. Fertig.
 | Secrets          | **Sealed Secrets + kubeseal-webgui**   | Verschlüsselte Secrets in Git, nur im Cluster entschlüsselbar          |
 | Notifications    | **Gotify** + **ntfy**                  | Self-hosted Push-Notifications — Gotify (Android), ntfy (iOS + Android) |
 | Remote-Access    | **Tailscale**                          | WireGuard-Mesh-VPN — keine Portfreigaben, keine öffentliche IP         |
+| Extern-HTTPS     | **Cloudflare Tunnel** (cloudflared)    | Alle Services unter `*.pke-lab.de` — outbound-only, kein offener Port  |
 | CI/CD intern     | **Argo Workflows + MinIO**             | Private CI/CD-Pipeline + S3-Artifact-Store im Cluster                 |
 | Ingress          | **Traefik v2** (mit k3s gebundled)     | HTTP/HTTPS-Routing in den Cluster                                      |
 | Provisioning     | **Ansible** (≥ 2.14)                   | Vollständig idempotent, Role-per-Concern, Vault für Secrets            |
@@ -179,6 +180,10 @@ Home-Lab/
         ├── monitoring/                     # VictoriaMetrics + Grafana
         ├── argo-workflows/                 # Private CI/CD-Pipeline (Argo Workflows)
         ├── minio/                          # S3-Artifact-Store für Argo Workflows
+        ├── cloudflare-tunnel/              # Cloudflare Tunnel — externes HTTPS via *.pke-lab.de
+        ├── coredns-custom/                 # Zusätzliche CoreDNS-Zonen
+        ├── gotify-bridge/                  # Alertmanager → Gotify-Webhook-Adapter
+        ├── ntfy-bridge/                    # Alertmanager → ntfy-Webhook-Adapter
         ├── coredns-custom/                 # CoreDNS-Anpassungen (Custom ConfigMap)
         ├── sealed-secrets/                 # SealedSecrets-Controller
         ├── authentik/                      # Authentik Single-Sign-On
@@ -226,9 +231,28 @@ Details: **[docs/05-argocd.md](docs/05-argocd.md)**.
 
 ---
 
+## Service-URLs
+
+| Service           | LAN / Tailnet                       | Extern (Internet)                          |
+|-------------------|-------------------------------------|--------------------------------------------|
+| Grafana           | http://grafana.homeserver           | https://grafana.pke-lab.de                 |
+| ArgoCD            | http://\<server-ip\>:30080          | —                                          |
+| Headlamp          | http://headlamp.homeserver          | https://headlamp.pke-lab.de                |
+| Semaphore         | http://semaphore.homeserver         | https://semaphore.pke-lab.de               |
+| Authentik         | http://authentik.homeserver         | https://authentik.pke-lab.de               |
+| Gotify            | http://gotify.homeserver            | https://gotify.pke-lab.de                  |
+| ntfy              | http://ntfy.homeserver              | https://ntfy.pke-lab.de                    |
+| Argo Workflows    | http://argo-workflows.homeserver    | https://argo-workflows.pke-lab.de          |
+| MinIO Console     | http://minio.homeserver             | https://minio.pke-lab.de                   |
+| kubeseal-webgui   | http://kubeseal-webgui.homeserver   | —                                          |
+
+Externer Zugriff läuft über **Cloudflare Tunnel** (`argocd/apps/cloudflare-tunnel/`) — outbound-only, kein offener Port am Router nötig.
+
+---
+
 ## Networking & Security
 
-- **Keine öffentlichen Ports.** Internet-Zugriff geht ausschließlich über Tailscale.
+- **Keine öffentlichen Ports.** LAN-/Tailnet-Zugriff geht über Traefik; externer Internet-Zugriff läuft über den Cloudflare Tunnel (outbound-only, TLS-terminiert bei Cloudflare).
 - **UFW** erlaubt nur, was der Stack braucht: SSH, HTTP/HTTPS, k3s-API, ArgoCD-NodePort, kubelet, Flannel VXLAN, Tailscale-UDP, plus volles Trust für LAN, Tailnet, Pod- und Service-CIDRs.
 - **Ansible-Vault** verschlüsselt sensitive Secrets at rest.
 - **ArgoCD** hat ausschließlich Read-Access auf das Git-Repo.

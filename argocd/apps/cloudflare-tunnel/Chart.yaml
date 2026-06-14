@@ -1,0 +1,21 @@
+---
+apiVersion: v2
+name: cloudflare-tunnel
+description: >
+  Cloudflare Tunnel (cloudflared) — makes all home-server services reachable
+  externally via *.pke-lab.de without opening any inbound ports.
+  The Pod establishes an outbound connection to Cloudflare; all public
+  hostname routing is configured in the Cloudflare Zero Trust dashboard.
+type: application
+version: 0.1.0
+appVersion: "2025.5.0"
+keywords:
+  - cloudflare
+  - tunnel
+  - ingress
+  - external-access
+home: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
+sources:
+  - https://github.com/cloudflare/cloudflared
+maintainers:
+  - name: home-server-admin
