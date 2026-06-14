@@ -21,7 +21,7 @@
 
 ```bash
 # 1) Repo klonen
-git clone https://github.com/PKE-Tech/capulus-core.git && cd Home-Lab
+git clone https://github.com/D-PEKR/Home-Lab.git && cd Home-Lab
 
 # 2) Eigene Details eintragen (Server-IP, Repo-URL, Tailscale-Key)
 $EDITOR ansible/inventory/hosts.yml
@@ -48,7 +48,6 @@ Am Ende druckt das Playbook die ArgoCD-URL und das Admin-Passwort. Fertig.
 | Monitoring       | **VictoriaMetrics + Grafana**          | Single-Node TSDB, vmagent, vmalert, Alertmanager, Dashboards           |
 | Kubernetes-UI    | **Headlamp**                           | Browser-Dashboard für den Cluster                                      |
 | Secrets          | **Sealed Secrets + kubeseal-webgui**   | Verschlüsselte Secrets in Git, nur im Cluster entschlüsselbar          |
-| Dokumenten-Scan  | **scanbd + Fujitsu USB-Scanner**       | Bare-Metal-Scan-Daemon → CIFS → Paperless-NGX auf der NAS              |
 | Notifications    | **Gotify** + **ntfy**                  | Self-hosted Push-Notifications — Gotify (Android), ntfy (iOS + Android) |
 | Remote-Access    | **Tailscale**                          | WireGuard-Mesh-VPN — keine Portfreigaben, keine öffentliche IP         |
 | CI/CD intern     | **Argo Workflows + MinIO**             | Private CI/CD-Pipeline + S3-Artifact-Store im Cluster                 |
@@ -80,7 +79,7 @@ Für reproduzierbare Builds `auto_upgrade: false` in `ansible/group_vars/all.yml
 **1. Repo klonen**
 
 ```bash
-git clone https://github.com/PKE-Tech/capulus-core.git
+git clone https://github.com/D-PEKR/Home-Lab.git
 cd Home-Lab
 ```
 
@@ -142,12 +141,12 @@ Home-Lab/
 │   ├── 07-troubleshooting.md         # Häufige Probleme
 │   ├── 08-semaphore.md               # Semaphore-Web-UI für Ansible
 │   ├── 09-dns-architecture.md        # Split-DNS-Design & Ausfallsicherheit
-│   ├── 10-scanner.md                 # Fujitsu-Scanner + scanbd + Paperless
 │   ├── 11-gotify.md                  # Push-Notifications via Gotify
-│   ├── 12-paperless-ai.md            # KI-Dokumentenanalyse für Paperless-NGX
 │   ├── 13-argo-workflows.md          # Private CI/CD mit Argo Workflows + MinIO
-│   ├── 14-sso-authentik.md           # Single-Sign-On Method
+│   ├── 14-sso-authentik.md           # Single-Sign-On via Authentik
 │   ├── 15-ntfy.md                    # iOS Push-Notifications via ntfy
+│   ├── 15-cert-login.md              # Zertifikats-Authentifizierung via Traefik mTLS
+│   ├── 16-sso-alle-dienste.md        # SSO-Konfiguration für alle Dienste
 │   └── assets/banner.svg
 ├── ansible/
 │   ├── site.yml                      # Entry-Point
@@ -159,26 +158,30 @@ Home-Lab/
 │       ├── common/                   # Base-OS, Firewall, Pakete
 │       ├── dnsmasq/                  # Split-DNS für *.homeserver
 │       ├── tailscale/                # VPN (WireGuard-Mesh)
-│       ├── k3s/                      # Single-Node-Kubernetes + Helm
+│       ├── k3s/                      # Kubernetes Control-Plane + Helm
+│       ├── k3s_agent/                # Kubernetes Worker-Node (worker-0 beitreten)
 │       ├── argocd/                   # GitOps-Controller via Helm
-│       ├── scanner/                  # Fujitsu-USB-Scanner + scanbd + SMB
 │       ├── semaphore_secrets/        # Bootstrap-Secret für den Semaphore-Pod
 │       ├── semaphore_targets/        # SSH-Pubkey auf Managed-Hosts pushen
-│       └── semaphore_bootstrap/      # Projects/Inventories/Templates per API
+│       ├── semaphore_bootstrap/      # Projects/Inventories/Templates per API
+│       ├── tinyteller/               # TinyTeller (Docker Compose auf worker-0)
+│       └── day_pilot/                # Day Pilot (Docker Compose auf worker-0)
 └── argocd/
     ├── bootstrap/root-applicationset.yaml  # Erkennt jedes Verzeichnis darunter
     └── apps/                               # Ein Ordner pro ArgoCD-Application
         ├── example-whoami/                 # Referenz-Helm-Chart
         ├── gotify/                         # Push-Notifications (Android)
+        ├── gotify-bridge/                  # Alertmanager → Gotify Webhook-Bridge
         ├── ntfy/                           # Push-Notifications (iOS + Android)
+        ├── ntfy-bridge/                    # Alertmanager → ntfy Webhook-Bridge
         ├── headlamp/                       # Kubernetes-Web-Dashboard
         ├── kubeseal-webgui/                # Sealed-Secrets-Verschlüsselungs-UI
         ├── monitoring/                     # VictoriaMetrics + Grafana
         ├── argo-workflows/                 # Private CI/CD-Pipeline (Argo Workflows)
         ├── minio/                          # S3-Artifact-Store für Argo Workflows
-        ├── paperless-ai/                   # KI-Dokumentenanalyse für Paperless-NGX
+        ├── coredns-custom/                 # CoreDNS-Anpassungen (Custom ConfigMap)
         ├── sealed-secrets/                 # SealedSecrets-Controller
-        ├── authentik/                      # Authentik Single-Sign-On Method
+        ├── authentik/                      # Authentik Single-Sign-On
         └── semaphore/                      # Ansible-Web-UI
 ```
 
@@ -195,8 +198,8 @@ Ein schlanker VictoriaMetrics-+-Grafana-Stack lebt unter
 - **Host-Metriken:** `prometheus-node-exporter` als DaemonSet auf dem Ubuntu-Host.
 - **Cluster-Metriken:** kubelet/cAdvisor, kube-apiserver, kube-state-metrics, CoreDNS.
   Scheduler/Controller-Manager/etcd-Scrapes sind deaktiviert — k3s vereint sie in einem Prozess.
-- **Alerts:** Default-kube-prometheus-Rules, geroutet auf einen `blackhole`-Receiver,
-  bis Discord/Slack/Gotify/ntfy in `values.yaml` verdrahtet ist.
+- **Alerts:** Default-kube-prometheus-Rules; Gotify- und ntfy-Alertmanager-Bridges
+  (`gotify-bridge`, `ntfy-bridge`) leiten Alerts weiter.
 - **Dashboards:** Node Exporter Full, VictoriaMetrics + Kubernetes „Views / Global, Namespaces, Nodes, Pods" von grafana.com.
 
 Grafana öffnen unter **http://grafana.homeserver** (LAN + Tailnet via dnsmasq).
@@ -259,11 +262,12 @@ Vollständige Architektur in **[docs/01-overview.md](docs/01-overview.md)**.
 | [Troubleshooting](docs/07-troubleshooting.md)                   | Diagnose-Playbook für häufige Probleme       |
 | [Semaphore-UI](docs/08-semaphore.md)                            | Web-UI zum Ausführen von Playbooks           |
 | [DNS-Architektur](docs/09-dns-architecture.md)                  | Warum der Home-Server NICHT dein LAN-DNS ist |
-| [Scanner & Paperless](docs/10-scanner.md)                       | Fujitsu-USB-Scanner → CIFS → Paperless-NGX   |
 | [Gotify-Push](docs/11-gotify.md)                                | Self-hosted Push-Notifications aus dem Stack |
-| [Paperless-AI](docs/12-paperless-ai.md)                         | KI-Dokumentenanalyse + RAG für Paperless-NGX |
 | [Argo Workflows](docs/13-argo-workflows.md)                     | Private CI/CD-Pipeline mit MinIO-Artifact-Store |
+| [SSO via Authentik](docs/14-sso-authentik.md)                   | Authentik als zentraler Identity Provider |
 | [ntfy iOS-Push](docs/15-ntfy.md)                                | Self-hosted ntfy mit iOS APNs-Relay via ntfy.sh |
+| [Zertifikats-Auth](docs/15-cert-login.md)                       | Traefik mTLS Client-Zertifikate |
+| [SSO alle Dienste](docs/16-sso-alle-dienste.md)                 | Headlamp, Argo Workflows, MinIO via OIDC |
 
 ---
 
