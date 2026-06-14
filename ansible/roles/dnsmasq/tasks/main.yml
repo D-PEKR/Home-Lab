@@ -47,16 +47,6 @@
     - tcp
     - udp
 
-- name: Allow DNS from k3s pod CIDR (UFW)
-  community.general.ufw:
-    rule: allow
-    port: "53"
-    proto: "{{ item }}"
-    src: "10.42.0.0/16"
-  loop:
-    - tcp
-    - udp
-
 - name: Enable and start dnsmasq
   ansible.builtin.systemd:
     name: dnsmasq

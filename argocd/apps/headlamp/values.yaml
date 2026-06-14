@@ -25,16 +25,14 @@ headlamp:
       externalSecret:
         enabled: true
         name: headlamp-oidc
-    extraArgs:
-      - "-oidc-skip-tls-verify"
 
   # OIDC_ISSUER_URL und OIDC_SCOPES als direkte env-Variablen (nur value erlaubt
   # vom Chart-Schema; die Args werden vom Chart via externalSecret ergänzt).
   env:
     - name: OIDC_ISSUER_URL
-      value: "https://authentik.homeserver/application/o/headlamp/"
+      value: "http://authentik.homeserver/application/o/headlamp/"
     - name: OIDC_SCOPES
-      value: "openid email profile groups offline_access"
+      value: "openid email profile groups"
 
   resources:
     requests:

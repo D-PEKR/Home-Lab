@@ -30,16 +30,6 @@ k3s_server_ip: "{{ ansible_default_ipv4.address }}"
 k3s_pod_cidr: "10.42.0.0/16"
 k3s_service_cidr: "10.43.0.0/16"
 
-# ---- k3s OIDC (Headlamp) -----------------------------------
-# Aktiviert OIDC-Token-Validierung für Headlamp-Logins via Authentik.
-# k3s_oidc_client_id: OIDC Client-ID der Headlamp-Anwendung in Authentik.
-#   Auslesen: kubectl -n headlamp get secret headlamp-oidc \
-#             -o jsonpath="{.data.OIDC_CLIENT_ID}" | base64 -d
-# Leer lassen → OIDC nicht konfigurieren.
-k3s_oidc_client_id: "ZYuTGSngBseO2KFco8WqCgV2Vdpij7c6Ip1CKXHC"
-# Pfad zur CA-Zertifikatsdatei auf dem Ansible-Controller (wird auf den Server kopiert).
-k3s_oidc_ca_cert_local: "{{ lookup('env', 'HOME') }}/homelab-certs/ca.crt"
-
 # ---- k3s Agent (Worker Node) --------------------------------
 # k3s_server_host: Ansible-Inventory-Name des Control-Plane-Servers.
 # Wird in der k3s_agent-Rolle verwendet, um per delegate_to den Join-Token

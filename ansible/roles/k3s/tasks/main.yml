@@ -19,17 +19,6 @@
     owner: root
     group: root
     mode: '0644'
-  notify: Restart k3s
-
-- name: Copy Home-Lab CA cert for OIDC token validation
-  ansible.builtin.copy:
-    src: "{{ k3s_oidc_ca_cert_local }}"
-    dest: /etc/rancher/k3s/homelab-ca.crt
-    owner: root
-    group: root
-    mode: '0644'
-  when: k3s_oidc_client_id | length > 0
-  notify: Restart k3s
 
 # ---- k3s Installation ---------------------------------------
 # Strategy:

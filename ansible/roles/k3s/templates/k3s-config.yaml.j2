@@ -12,11 +12,3 @@ node-name: "{{ hostname }}"
 # der aus dem Pod-Netz nicht erreichbar ist. CoreDNS bekommt damit keine
 # Upstream-DNS-Server und kann externe Namen (github.com etc.) nicht auflösen.
 resolv-conf: /run/systemd/resolve/resolv.conf
-{% if k3s_oidc_client_id | length > 0 %}
-kube-apiserver-arg:
-  - "oidc-issuer-url=https://authentik.homeserver/application/o/headlamp/"
-  - "oidc-client-id={{ k3s_oidc_client_id }}"
-  - "oidc-ca-file=/etc/rancher/k3s/homelab-ca.crt"
-  - "oidc-username-claim=email"
-  - "oidc-groups-claim=groups"
-{% endif %}
