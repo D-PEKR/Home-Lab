@@ -27,7 +27,7 @@ chmod 600 ~/.vault_pass
 export VAULT_OPTS="--vault-password-file=$HOME/.vault_pass"
 ```
 
-### Beide Zielserver (Ubuntu 22.04 / 24.04 LTS)
+### Beide Zielserver (Ubuntu 26.04 LTS)
 
 Auf **jedem** Server einmalig ausführen:
 
@@ -46,7 +46,7 @@ ansible -i ansible/inventory/hosts.yml all -m ping
 
 ```bash
 git clone https://github.com/PKE-Tech/capulus-core.git
-cd Home-Lab
+cd capulus-core
 make deps
 ```
 
@@ -80,30 +80,24 @@ ansible-vault encrypt_string 'DEIN_WERT' --name 'variable_name'
 
 ### 2.2 — worker-0 (Docker Compose)
 
-Vault-Datei für worker-0 anlegen:
+Vault-Datei für worker-0 befüllen:
 
 ```bash
-cp ansible/host_vars/worker-0/vault.yml.example \
-   ansible/host_vars/worker-0/vault.yml
+# Die Datei existiert bereits — mit make vault-edit öffnen oder direkt editieren:
+# ansible/host_vars/homeserver2/vault.yml
 ```
 
-Datei befüllen — Secrets verschlüsseln:
+Secrets verschlüsseln und einfügen:
 
 ```bash
 # sudo-Passwort für worker-0
 ansible-vault encrypt_string 'SUDO_PASSWORT' --name 'vault_worker-0_become_password'
 
-# Paperless-Datenbank-Passwort
-ansible-vault encrypt_string 'DB_PASSWORT' --name 'vault_paperless_db_password'
-
-# Paperless Admin-Passwort
-ansible-vault encrypt_string 'ADMIN_PASSWORT' --name 'vault_paperless_admin_password'
-
-# Paperless Secret Key (beliebiger langer zufälliger String)
-ansible-vault encrypt_string 'SECRET_KEY_STRING' --name 'vault_paperless_secret_key'
+# TinyTeller / Day Pilot spezifische Secrets (falls nötig)
+ansible-vault encrypt_string 'API_KEY' --name 'vault_day_pilot_openai_api_key'
 ```
 
-Ergebnisse in `ansible/host_vars/worker-0/vault.yml` einfügen.
+Ergebnisse in `ansible/host_vars/homeserver2/vault.yml` einfügen.
 
 > **Wichtig:** `vault.yml` niemals committen — sie liegt bereits in `.gitignore`.
 
@@ -121,7 +115,6 @@ make dnsmasq      # Split-DNS (*.homeserver)
 make tailscale    # VPN
 make k3s          # Kubernetes + Helm
 make argocd       # GitOps-Controller
-make scanner      # Fujitsu-Scanner + scanbd + SMB-Mount
 make semaphore    # Semaphore Secrets
 ```
 
@@ -140,27 +133,24 @@ ArgoCD UI: **http://192.168.178.94:30080** (Benutzer: `admin`)
 
 ---
 
-## Schritt 4 — worker-0 provisionieren (Docker Compose)
+## Schritt 4 — worker-0 provisionieren (k3s-Agent + Docker Compose)
 
 ```bash
 # Dry-run zuerst
 make worker-0-check
 
-# Vollständige Installation
+# Vollständige Installation (k3s-Agent + TinyTeller + Day Pilot)
 make worker-0
 
-# Einzelne Services deployen
-ansible-playbook -i ansible/inventory/hosts.yml ansible/worker-0.yml \
-  --tags paperless $(VAULT_OPTS)
+# Nur k3s-Agent beitreten lassen
+make k3s-agent
 
-ansible-playbook -i ansible/inventory/hosts.yml ansible/worker-0.yml \
+# Einzelne Docker-Compose-Dienste deployen
+ansible-playbook -i ansible/inventory/hosts.yml ansible/homeserver2.yml \
   --tags tinyteller $(VAULT_OPTS)
 
-ansible-playbook -i ansible/inventory/hosts.yml ansible/worker-0.yml \
+ansible-playbook -i ansible/inventory/hosts.yml ansible/homeserver2.yml \
   --tags day-pilot $(VAULT_OPTS)
-
-ansible-playbook -i ansible/inventory/hosts.yml ansible/worker-0.yml \
-  --tags node-exporter $(VAULT_OPTS)
 ```
 
 ---
@@ -205,8 +195,7 @@ Grafana: **http://grafana.homeserver** (Benutzer: `admin`)
 
 Das Monitoring scrapt automatisch:
 - `homeserver` — Node Exporter (DaemonSet im Cluster)
-- `worker-0:9100` — Node Exporter (Docker Compose)
-- `worker-0:18080` — cAdvisor (Docker Compose)
+- Alle Pods/Services mit `VMServiceScrape`/`VMPodScrape`-Annotationen
 
 ---
 
@@ -317,13 +306,13 @@ ssh ubuntu@192.168.178.94 \
    -p "{\"operation\":{\"sync\":{}}}" --type merge'
 ```
 
-### Paperless-Container neu starten (worker-0)
+### Docker-Compose-Dienst neu starten (worker-0)
 
 ```bash
 ssh ubuntu@192.168.178.95
-cd /opt/paperless
+cd /opt/tinyteller   # oder /opt/day-pilot
 sudo docker compose restart
-sudo docker compose logs -f paperless-webserver
+sudo docker compose logs -f
 ```
 
 ### Semaphore-Bootstrap schlägt fehl (HTTP 400)
@@ -332,15 +321,6 @@ Das Bootstrap-Playbook ist idempotent — einfach nochmal ausführen:
 
 ```bash
 make semaphore-bootstrap
-```
-
-### Scanner-SMB-Mount ausgefallen
-
-```bash
-ssh ubuntu@192.168.178.94
-sudo systemctl status mnt-paperless\\x2dconsume.mount
-sudo mount -a
-# Wenn worker-0 nicht erreichbar: zuerst worker-0 starten
 ```
 
 ### Grafana `no such column: is_service_account`
@@ -362,38 +342,38 @@ ssh ubuntu@192.168.178.94 \
 ## Verzeichnisstruktur
 
 ```
-home-server/
+Home-Lab/
 ├── ansible/
 │   ├── site.yml                    ← Haupt-Playbook (homeserver)
-│   ├── worker-0.yml             ← Docker-Compose-Playbook (worker-0)
+│   ├── homeserver2.yml             ← Playbook für worker-0 (k3s-Agent + Docker Compose)
 │   ├── inventory/hosts.yml         ← IP-Adressen beider Server
 │   ├── group_vars/all.yml          ← Alle Konfigurationswerte + Vault-Secrets
 │   ├── host_vars/
-│   │   ├── homeserver/             ← (falls nötig: host-spezifische Vars)
-│   │   └── worker-0/
-│   │       ├── vars.yml            ← Service-Konfiguration
+│   │   └── homeserver2/
+│   │       ├── vars.yml            ← Service-Konfiguration für worker-0
 │   │       └── vault.yml           ← Verschlüsselte Secrets (nicht im Git!)
 │   └── roles/
 │       ├── common/                 ← Basis-OS-Härtung
-│       ├── k3s/                    ← Kubernetes
+│       ├── k3s/                    ← Kubernetes Control-Plane
+│       ├── k3s_agent/              ← Kubernetes Worker-Node
 │       ├── argocd/                 ← GitOps
 │       ├── dnsmasq/                ← Split-DNS
 │       ├── tailscale/              ← VPN
-│       ├── scanner/                ← Fujitsu-Scanner-Integration
 │       ├── semaphore_secrets/      ← Semaphore-Bootstrap-Secrets
+│       ├── semaphore_targets/      ← SSH-Pubkey auf Managed-Hosts pushen
 │       ├── semaphore_bootstrap/    ← Semaphore REST-API-Provisionierung
-│       ├── paperless/              ← Paperless-NGX (Docker Compose)
-│       ├── node_exporter_nas/      ← Node Exporter + cAdvisor (Docker Compose)
 │       ├── tinyteller/             ← TinyTeller (Docker Compose)
 │       └── day_pilot/              ← Day Pilot (Docker Compose)
 └── argocd/
     ├── bootstrap/root-applicationset.yaml
     └── apps/
-        ├── monitoring/
-        │   ├── values.yaml
-        │   └── worker-0-scrape.yaml  ← VMStaticScrape für worker-0
-        ├── gotify/
-        ├── headlamp/
-        ├── sealed-secrets/
+        ├── monitoring/             ← VictoriaMetrics + Grafana
+        ├── gotify/                 ← Push-Notifications (Android)
+        ├── gotify-bridge/          ← Alertmanager → Gotify Bridge
+        ├── ntfy/                   ← Push-Notifications (iOS + Android)
+        ├── ntfy-bridge/            ← Alertmanager → ntfy Bridge
+        ├── headlamp/               ← Kubernetes-Dashboard
+        ├── sealed-secrets/         ← SealedSecrets-Controller
+        ├── authentik/              ← SSO Identity Provider
         └── ...
 ```
